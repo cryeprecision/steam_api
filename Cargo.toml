@@ -1,0 +1,12 @@
+[package]
+name = "steam_api_concurrent"
+version = "0.1.0"
+edition = "2021"
+description = "concurrent requests to the steam api"
+authors = ["cryeprecision#8008"]
+repository = "https://github.com/cryeprecision/steam_api_concurrent"
+readme = "README.md"
+keywords = ["steam", "concurrent", "parallel", "api"]
+include = ["src/", "README.md"]
+
+[dependencies]
