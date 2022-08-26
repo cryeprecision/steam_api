@@ -10,3 +10,11 @@ keywords = ["steam", "concurrent", "parallel", "api"]
 include = ["src/", "README.md"]
 
 [dependencies]
+reqwest = { version = "0.11.11", features = ["json", "cookies"] } # make web-requests
+serde = { version = "1.0.143", features = ["derive"] } # seralization
+serde_json = "1.0.83" # de-/serialize json data
+log = "0.4.17" # logging facade
+pretty_env_logger = "0.4.0" # actual logging implementation
+tokio = { version = "1.20.1", features = ["full"] } # async runtime
+futures = "0.3.23" # concurrency helper
+chrono = { version = "0.4.19", features = ["serde"] } # time and date stuff
