@@ -12,13 +12,20 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PlayerBanError {
+    /// This API can only handle up to
+    /// [`crate::constants::PLAYER_BANS_IDS_PER_REQUEST`] ids per request
     #[error("too many ids passed for request")]
     TooManyIds,
+
+    /// For efficiency reasons the passed [SteamId]s must be unique
     #[error("ids must be unique")]
     NonUniqueIds(SteamId),
+
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
-    #[error("invalid steam-id: {0}")]
+
+    /// The response contained an invalid [SteamId]
+    #[error("invalid steam-id: `{0}`")]
     InvalidSteamId(String),
 }
 pub type Result<T> = std::result::Result<T, PlayerBanError>;
@@ -56,7 +63,10 @@ pub struct PlayerBan {
     pub number_of_game_bans: i32,
     pub economy_ban: String,
 }
-type BanMap = HashMap<SteamId, Option<PlayerBan>>;
+
+/// If a given [`SteamId`] does not exist anymore,
+/// its corresponding entry will be `None`
+pub type BanMap = HashMap<SteamId, Option<PlayerBan>>;
 
 impl TryFrom<ResponseElement> for PlayerBan {
     type Error = PlayerBanError;
@@ -97,33 +107,19 @@ impl<'a> TryFrom<(Response, &'a [SteamId], BanMap)> for PlayerBans<'a> {
 
 impl std::fmt::Display for PlayerBan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}]: ", self.steam_id)?;
-        let mut any_ban = false;
-        if self.number_of_game_bans > 0 {
-            any_ban = true;
-            "Vacced".fmt(f)?;
-        }
-        if self.number_of_game_bans > 0 {
-            if any_ban {
-                ", ".fmt(f)?;
-            }
-            any_ban = true;
-            "Gamed".fmt(f)?;
-        }
-        if self.community_banned {
-            if any_ban {
-                ", ".fmt(f)?;
-            }
-            any_ban = true;
-            "Comunityd".fmt(f)?;
-        }
-        if !any_ban {
-            "Clean".fmt(f)?;
-        }
-        Ok(())
+        f.debug_struct("PlayerBan")
+            .field("SteamID", &self.steam_id)
+            .field("VAC", &self.number_of_vac_bans)
+            .field("GameBan", &self.number_of_game_bans)
+            .field("CommunityBan", &self.community_banned)
+            .field("LastBan", &self.days_since_last_ban)
+            .finish_non_exhaustive()
     }
 }
 
+/// Get the bans of the profiles with the given [SteamId]
+///
+/// Uses [`PLAYER_BANS_API`]
 pub async fn get_player_bans<'a>(
     client: &'a Client,
     api_key: &'a str,
@@ -182,7 +178,7 @@ mod tests {
 
         let mut stream = futures::stream::iter(ids.iter().map(|&ids| ids))
             .map(|ids| get_player_bans(&client, &api_key, ids))
-            .buffer_unordered(2);
+            .buffered(10);
 
         while let Some(res) = stream.next().await {
             for (id, ban) in res.unwrap().bans.iter() {

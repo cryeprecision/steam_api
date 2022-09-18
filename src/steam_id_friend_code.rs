@@ -1,7 +1,9 @@
 use crate::bit_chunks::{BitChunks, ChunksU4, ChunksU5};
 use crate::steam_id::SteamId;
-use byteorder::{ByteOrder, LittleEndian};
+
 use std::fmt;
+
+use byteorder::{ByteOrder, LittleEndian};
 
 struct U32Pair(u32, u32);
 
@@ -48,10 +50,6 @@ fn base32_encode(num: u64) -> String {
     buf
 }
 
-fn _base32_decode(_str: &str) -> SteamId {
-    todo!();
-}
-
 impl SteamId {
     fn hash(&self) -> u32 {
         let acc_nr = self.acc_nr() as u32;
@@ -73,9 +71,6 @@ impl SteamId {
             let _ = enc.drain(0.."AAAA-".len());
         };
         enc
-    }
-    pub fn from_friend_code(_friend_code: &str) -> Option<SteamId> {
-        todo!();
     }
 }
 

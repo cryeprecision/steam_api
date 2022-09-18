@@ -6,8 +6,8 @@ pub const PLAYER_SUMMARIES_API: &str =
 pub const PLAYER_SUMMARIES_CONCURRENT_REQUESTS: usize = 100;
 pub const PLAYER_SUMMARIES_IDS_PER_REQUEST: usize = 100;
 
-pub const FRIENDS_LIST_API: &str = "https://api.steampowered.com/ISteamUser/GetFriendList/v1/";
-pub const FRIEND_LIST_CONCURRENT_REQUESTS: usize = 100;
+pub const PLAYER_FRIENDS_API: &str = "https://api.steampowered.com/ISteamUser/GetFriendList/v1/";
+pub const PLAYER_FRIENDS_CONCURRENT_REQUESTS: usize = 100;
 
 pub const PLAYER_BANS_API: &str = "https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/";
 pub const PLAYER_BANS_CONCURRENT_REQUESTS: usize = 100;

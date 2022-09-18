@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use reqwest::cookie::{CookieStore, Jar};
-use reqwest::{Client, Url};
+use reqwest::{Client, StatusCode, Url};
 use scraper::{ElementRef, Html, Selector};
 use serde::Deserialize;
 use thiserror::Error;
@@ -15,12 +15,20 @@ use thiserror::Error;
 pub enum UserSearchError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
+
+    /// The `success` member in the response was not set to `1`
     #[error("api didn't return success")]
     NoSuccess,
+
+    /// A selector for parsing the html-payload was invalid
     #[error("selector is invalid")]
     InvalidSelector,
+
+    /// The `search_page` member in the response was not a valid [`usize`]
     #[error("search_page is not a valid usize")]
     InvalidSearchPage,
+
+    /// There was an error while parsing the html-payload
     #[error("couldn't parse html payload ({0})")]
     InvalidHtmlPayload(#[from] ParseError),
 }
@@ -44,17 +52,14 @@ pub struct UserSearchEntry {
 }
 
 impl UserSearchEntry {
-    pub fn short_url(&self) -> &str {
+    /// Abbreviate the profile-url from the html-payload.
+    pub fn short_url(&self) -> Option<&str> {
         const ID: &str = "/profiles/";
         const URL: &str = "/id/";
-        match self
-            .profile_url
-            .find(ID)
-            .or_else(|| self.profile_url.find(URL))
-        {
-            Some(idx) => &self.profile_url[idx..],
-            None => &self.profile_url,
-        }
+
+        let find = self.profile_url.find(ID);
+        let find = find.or_else(|| self.profile_url.find(URL));
+        find.map(|idx| &self.profile_url[idx + 1..])
     }
 }
 
@@ -62,7 +67,7 @@ impl fmt::Debug for UserSearchEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UserSearchEntry")
             .field("name", &self.persona_name)
-            .field("url", &self.short_url())
+            .field("url", &self.short_url().unwrap_or_default())
             .field("aliases", &self.aliases.len())
             .finish_non_exhaustive()
     }
@@ -112,12 +117,15 @@ struct Parser {
 
 #[derive(Debug, Error)]
 pub enum ParseError {
+    /// Couldn't parse the profile-info from a row in the html-payload
     #[error("no profile info")]
     NoProfileInfo,
+
+    /// Couldn't parse the profile-avatar from a row in the html-payload
     #[error("no profile avatar")]
     NoProfileAvatar,
 }
-pub type ParseResult<T> = std::result::Result<T, ParseError>;
+type ParseResult<T> = std::result::Result<T, ParseError>;
 
 impl Parser {
     fn new() -> Option<Self> {
@@ -185,6 +193,7 @@ impl Parser {
     }
 }
 
+/// Query [`USER_SEARCH_API`] for the name `query` and the page `page`
 pub async fn get_search_page(
     client: &Client,
     session_id: &str,
@@ -202,6 +211,11 @@ pub async fn get_search_page(
     UserSearchPage::try_from(resp)
 }
 
+/// Create a [`Client`] with a [`CookieStore`] and send a request to [`USER_SEARCH_API`].
+///
+/// This will set the cookies `sessionid` and `steamCountry`.
+///
+/// The request will return a 401 status-code which is expected.
 pub async fn client_with_session_id() -> Option<(Client, String)> {
     // SAFETY: I'm pretty sure this is a valid URL :^)
     let url = Url::from_str("https://steamcommunity.com/").ok()?;
@@ -210,7 +224,11 @@ pub async fn client_with_session_id() -> Option<(Client, String)> {
     let builder = Client::builder().cookie_provider(Arc::clone(&jar));
     let client = builder.build().ok()?;
 
-    client.get(USER_SEARCH_API).send().await.ok()?;
+    let resp = client.get(USER_SEARCH_API).send().await.ok()?;
+    if resp.status() != StatusCode::UNAUTHORIZED {
+        // Every status-code other than 401 should be an error
+        let _ = resp.error_for_status().ok()?;
+    }
 
     let cookies = jar.cookies(&url)?;
     let cookie_str = cookies.to_str().ok()?;
@@ -232,8 +250,6 @@ mod tests {
     async fn it_works() {
         let (client, session_id) = client_with_session_id().await.unwrap();
         let searches: [(&str, usize); _] = [
-            ("soser", 2),
-            ("soser", 1),
             ("masterlooser", 1),
             ("masterlooser", 2),
             ("masterlooser", 3),
@@ -248,26 +264,16 @@ mod tests {
             ("masterlooser", 12),
             ("masterlooser", 13),
             ("masterlooser", 14),
+            ("masterlooser", 69),
         ];
 
         let mut stream = futures::stream::iter(searches.iter())
             .map(|&(query, page)| get_search_page(&client, &session_id, query, page))
-            .buffer_unordered(4);
+            .buffered(4);
 
         while let Some(res) = stream.next().await {
             let res = res.unwrap();
-            let personas = res
-                .results
-                .iter()
-                .map(|r| r.persona_name.as_str())
-                .collect::<Vec<_>>();
-            println!(
-                "[p: {}, t: {}, c: {}]: {:?}",
-                res.search_page,
-                res.total_result_count,
-                res.results.len(),
-                personas,
-            )
+            println!("Results: {}/{}", res.results.len(), res.total_result_count);
         }
     }
 }

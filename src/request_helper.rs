@@ -1,7 +1,10 @@
+use reqwest::RequestBuilder;
+use serde::de::DeserializeOwned;
+
 /// client_error <=> status is within 400-499.
 /// server_error <=> status is within 500-599.
-pub async fn send_request<T: serde::de::DeserializeOwned>(
-    builder: reqwest::RequestBuilder,
+pub async fn send_request<T: DeserializeOwned>(
+    builder: RequestBuilder,
     error_for_client_error: bool,
     error_for_server_error: bool,
 ) -> reqwest::Result<T> {

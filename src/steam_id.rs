@@ -3,7 +3,7 @@ use std::fmt::Write;
 use std::str::FromStr;
 use thiserror::Error;
 
-/// Wrapper for `SteamID`s that is implemented according to [`Valve`](https://developer.valvesoftware.com/wiki/SteamID)
+/// Wrapper for [`SteamId`]s that is implemented according to [`Valve`](https://developer.valvesoftware.com/wiki/SteamID)
 ///
 /// The bit shifting is explained here:
 /// - [`As Represented in Computer Programs`](https://developer.valvesoftware.com/wiki/SteamID#As_Represented_in_Computer_Programs)
@@ -52,8 +52,8 @@ impl SteamId {
     const Y_SHIFT: u64 = 0;
     const Y_MASK: u64 = (1 << 1) - 1;
 
-    const ACC_NR_SHIFT: u64 = 0;
-    const ACC_NR_MASK: u64 = (1 << 32) - 1;
+    const ACC_NR_SHIFT: u64 = 1;
+    const ACC_NR_MASK: u64 = (1 << 31) - 1;
 
     const INSTANCE_SHIFT: u64 = 32;
     const INSTANCE_MASK: u64 = (1 << 20) - 1;

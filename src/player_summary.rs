@@ -3,34 +3,47 @@ use crate::enums::{CommunityVisibilityState, PersonaState};
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
 use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
+use serde::Deserialize;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PlayerSummaryError {
+    /// This API can only handle up to [`PLAYER_SUMMARIES_IDS_PER_REQUEST`] ids per request
     #[error("too many ids passed for request")]
     TooManyIds,
+
+    /// For efficiency reasons the passed [SteamId] must be unique
     #[error("ids must be unique")]
     NonUniqueIds(SteamId),
+
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
-    #[error("invalid community visibility state: {0}")]
+
+    /// The response contained an invalid [`CommunityVisibilityState`]
+    #[error("invalid community visibility state: `{0}`")]
     InvalidCommunityVisibilityState(i32),
-    #[error("invalid primary-clan-id: {0}")]
+
+    /// The primary-clan-id was not parseable as u64
+    #[error("invalid primary-clan-id: `{0}`")]
     InvalidPrimaryClanId(String),
-    #[error("invalid persona-state: {0}")]
+
+    /// The response contained an invalid [`PersonaState`]
+    #[error("invalid persona-state: `{0}`")]
     InvalidPersonaState(i32),
-    #[error("invalid steam-id: {0}")]
+
+    /// The response contained an invalid [SteamId]
+    #[error("invalid steam-id: `{0}`")]
     InvalidSteamId(String),
 }
-type Result<T> = std::result::Result<T, PlayerSummaryError>;
+pub type Result<T> = std::result::Result<T, PlayerSummaryError>;
 
-#[derive(serde::Deserialize, Debug, Default, Clone)]
+#[derive(Deserialize, Debug, Default, Clone)]
 struct ResponseInnerElement {
     #[serde(rename = "steamid")]
     steam_id: String,
@@ -66,12 +79,12 @@ struct ResponseInnerElement {
     local_country_code: Option<String>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct ResponseInner {
     players: Vec<ResponseInnerElement>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 struct Response {
     response: ResponseInner,
 }
@@ -95,7 +108,10 @@ pub struct PlayerSummary {
     pub persona_state_flags: Option<u32>,
     pub local_country_code: Option<String>,
 }
-type SummaryMap = HashMap<SteamId, Option<PlayerSummary>>;
+
+/// If a given [SteamId] does not exist anymore,
+/// its corresponding entry will be `None`
+pub type SummaryMap = HashMap<SteamId, Option<PlayerSummary>>;
 
 impl TryFrom<ResponseInnerElement> for PlayerSummary {
     type Error = PlayerSummaryError;
@@ -175,6 +191,7 @@ impl std::fmt::Display for PlayerSummary {
             write!(f, " ({})", time.format("%Y/%m/%d %H:%M:%S"))?
         }
         write!(f, ", {}", self.persona_name)?;
+        write!(f, ", {:?}", self.community_visibility_state)?;
         if let Some(name) = &self.real_name {
             write!(f, " ({})", name)?;
         }
@@ -189,6 +206,9 @@ impl std::fmt::Display for PlayerSummary {
     }
 }
 
+/// Get the summaries of the profiles with the given [SteamId]
+///
+/// Uses [`PLAYER_SUMMARIES_API`]
 pub async fn get_player_summaries<'a>(
     client: &'a reqwest::Client,
     api_key: &'a str,
