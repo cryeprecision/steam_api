@@ -209,6 +209,7 @@ pub async fn get_player_summaries<'a>(
     let query = [("key", api_key), ("steamids", &ids)];
     let req = client.get(PLAYER_SUMMARIES_API).query(&query);
     let resp = crate::request_helper::send_request::<Response>(req, true, true).await?;
+
     PlayerSummaries::try_from((resp, steam_id_chunk, map))
 }
 
@@ -220,24 +221,23 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() {
-        let ids: [&[SteamId]; 2] = [
-            &[76561199123543583.into(), 76561198196615742.into()],
-            &[
-                76561199159691884.into(),
-                76561198230177976.into(),
-                76561198414415313.into(),
-                76561197992321696.into(),
-                76561198350302388.into(),
-                76561198159967543.into(),
-                76561197981967565.into(),
-                76561199049236696.into(),
-                76561199063760869.into(),
-                76561197961074129.into(),
-                76561198292293761.into(),
-                76561198145832850.into(),
-                76561198151659207.into(),
-                76561198405122517.into(),
-            ],
+        let ids: [&[SteamId]; _] = [
+            &[76561199123543583.into()],
+            &[76561198196615742.into()],
+            &[76561199159691884.into()],
+            &[76561198230177976.into()],
+            &[76561198414415313.into()],
+            &[76561197992321696.into()],
+            &[76561198350302388.into()],
+            &[76561198159967543.into()],
+            &[76561197981967565.into()],
+            &[76561199049236696.into()],
+            &[76561199063760869.into()],
+            &[76561197961074129.into()],
+            &[76561198292293761.into()],
+            &[76561198145832850.into()],
+            &[76561198151659207.into()],
+            &[76561198405122517.into()],
         ];
 
         dotenv::dotenv().unwrap();
@@ -246,7 +246,7 @@ mod tests {
 
         let mut stream = futures::stream::iter(ids.iter())
             .map(|&chunk| get_player_summaries(&client, &api_key, &chunk))
-            .buffered(10);
+            .buffer_unordered(2);
 
         while let Some(res) = stream.next().await {
             for (id, summary) in res.unwrap().summaries.iter() {

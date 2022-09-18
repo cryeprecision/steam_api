@@ -231,16 +231,43 @@ mod tests {
     #[tokio::test]
     async fn it_works() {
         let (client, session_id) = client_with_session_id().await.unwrap();
-        let searches = [("soser", 2_usize), ("soser", 1_usize), ("crye", 1_usize)];
+        let searches: [(&str, usize); _] = [
+            ("soser", 2),
+            ("soser", 1),
+            ("masterlooser", 1),
+            ("masterlooser", 2),
+            ("masterlooser", 3),
+            ("masterlooser", 4),
+            ("masterlooser", 5),
+            ("masterlooser", 6),
+            ("masterlooser", 7),
+            ("masterlooser", 8),
+            ("masterlooser", 9),
+            ("masterlooser", 10),
+            ("masterlooser", 11),
+            ("masterlooser", 12),
+            ("masterlooser", 13),
+            ("masterlooser", 14),
+        ];
 
         let mut stream = futures::stream::iter(searches.iter())
             .map(|&(query, page)| get_search_page(&client, &session_id, query, page))
-            .buffered(10);
+            .buffer_unordered(4);
 
         while let Some(res) = stream.next().await {
-            for elem in res.unwrap().results {
-                println!("{:?}", elem);
-            }
+            let res = res.unwrap();
+            let personas = res
+                .results
+                .iter()
+                .map(|r| r.persona_name.as_str())
+                .collect::<Vec<_>>();
+            println!(
+                "[p: {}, t: {}, c: {}]: {:?}",
+                res.search_page,
+                res.total_result_count,
+                res.results.len(),
+                personas,
+            )
         }
     }
 }

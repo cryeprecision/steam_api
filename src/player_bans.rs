@@ -1,7 +1,8 @@
-use crate::constants::PLAYER_BANS_API;
+use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
@@ -11,6 +12,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PlayerBanError {
+    #[error("too many ids passed for request")]
+    TooManyIds,
+    #[error("ids must be unique")]
+    NonUniqueIds(SteamId),
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
     #[error("invalid steam-id: {0}")]
     InvalidSteamId(String),
 }
@@ -49,6 +56,7 @@ pub struct PlayerBan {
     pub number_of_game_bans: i32,
     pub economy_ban: String,
 }
+type BanMap = HashMap<SteamId, Option<PlayerBan>>;
 
 impl TryFrom<ResponseElement> for PlayerBan {
     type Error = PlayerBanError;
@@ -70,16 +78,20 @@ impl TryFrom<ResponseElement> for PlayerBan {
 
 pub struct PlayerBans<'a> {
     pub query: &'a [SteamId],
-    pub bans: Vec<Result<PlayerBan>>,
+    pub bans: BanMap,
 }
 
-impl<'a> From<(Response, &'a [SteamId])> for PlayerBans<'a> {
-    fn from((response, query): (Response, &'a [SteamId])) -> Self {
-        let iter = response.players.into_iter();
-        Self {
-            query: query,
-            bans: iter.map(PlayerBan::try_from).collect(),
+impl<'a> TryFrom<(Response, &'a [SteamId], BanMap)> for PlayerBans<'a> {
+    type Error = PlayerBanError;
+    fn try_from((response, query, mut map): (Response, &'a [SteamId], BanMap)) -> Result<Self> {
+        for elem in response.players.into_iter() {
+            let ban = PlayerBan::try_from(elem)?;
+            let _ = map.insert(ban.steam_id, Some(ban));
         }
+        Ok(Self {
+            query: query,
+            bans: map,
+        })
     }
 }
 
@@ -116,12 +128,25 @@ pub async fn get_player_bans<'a>(
     client: &'a Client,
     api_key: &'a str,
     steam_id_chunk: &'a [SteamId],
-) -> reqwest::Result<PlayerBans<'a>> {
+) -> Result<PlayerBans<'a>> {
+    if steam_id_chunk.len() > PLAYER_BANS_IDS_PER_REQUEST {
+        return Err(PlayerBanError::TooManyIds);
+    }
+
+    let mut map = BanMap::with_capacity(steam_id_chunk.len());
+    for &id in steam_id_chunk {
+        if let Some(_) = map.insert(id, None) {
+            return Err(PlayerBanError::NonUniqueIds(id));
+        }
+    }
+
     let ids = steam_id_chunk.iter().to_steam_id_string(",");
     let query = [("key", api_key), ("steamids", &ids)];
     let req = client.get(PLAYER_BANS_API).query(&query);
+
     let resp = crate::request_helper::send_request::<Response>(req, true, true).await?;
-    Ok(PlayerBans::from((resp, steam_id_chunk)))
+
+    PlayerBans::try_from((resp, steam_id_chunk, map))
 }
 
 #[cfg(test)]
@@ -133,11 +158,22 @@ mod tests {
     #[tokio::test]
     async fn it_works() {
         let ids: [&[SteamId]; _] = [
-            &[76561199123543583.into(), 76561198196615742.into()],
-            &[76561199159691884.into(), 76561198230177976.into()],
-            &[76561198414415313.into(), 76561197992321696.into()],
-            &[76561197992321696.into(), 76561198350302388.into()],
-            &[76561198159967543.into(), 76561197981967565.into()],
+            &[76561199123543583.into()],
+            &[76561198196615742.into()],
+            &[76561199159691884.into()],
+            &[76561198230177976.into()],
+            &[76561198414415313.into()],
+            &[76561197992321696.into()],
+            &[76561198350302388.into()],
+            &[76561198159967543.into()],
+            &[76561197981967565.into()],
+            &[76561199049236696.into()],
+            &[76561199063760869.into()],
+            &[76561197961074129.into()],
+            &[76561198292293761.into()],
+            &[76561198145832850.into()],
+            &[76561198151659207.into()],
+            &[76561198405122517.into()],
         ];
 
         dotenv::dotenv().unwrap();
@@ -146,21 +182,15 @@ mod tests {
 
         let mut stream = futures::stream::iter(ids.iter().map(|&ids| ids))
             .map(|ids| get_player_bans(&client, &api_key, ids))
-            .buffered(10);
+            .buffer_unordered(2);
 
         while let Some(res) = stream.next().await {
-            let inner = match res {
-                Err(err) => {
-                    println!("Request failed: {}", err);
-                    continue;
+            for (id, ban) in res.unwrap().bans.iter() {
+                if let Some(ban) = ban {
+                    println!("{}", ban);
+                } else {
+                    println!("{} missing", id);
                 }
-                Ok(val) => val,
-            };
-            for bans in inner.bans {
-                match bans {
-                    Ok(ban) => println!("{}", ban),
-                    Err(err) => println!("{}", err),
-                };
             }
         }
     }
