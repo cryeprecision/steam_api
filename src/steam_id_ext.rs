@@ -28,9 +28,9 @@ pub trait SteamIdExt: Iterator {
 
     /// Builds a string by invoking `f` with each element of the iterator.
     ///
-    /// Not nearly as efficient as [`SteamIdExt::to_steam_id_string`] because this function cannot allocate
-    /// a large enough string up front, since it isn't known how many chars are needed to display
-    /// the result of `f`.
+    /// Not as efficient as [`SteamIdExt::to_steam_id_string`], because this function cannot
+    /// allocate a large enough string up front, since it doesn't know how many chars are needed to
+    /// display the result of `f`.
     fn to_steam_id_string_with<T, F, B>(mut self, sep: &str, f: F) -> String
     where
         Self: Sized + Iterator<Item = T>,
@@ -85,6 +85,16 @@ mod tests {
         assert_eq!(
             result.capacity(),
             SteamId::MAX_DIGITS_FOR_U64 * 2 + ", ".len()
+        );
+    }
+
+    #[test]
+    fn to_steam_id_misc_iter_works() {
+        let iter = std::iter::repeat(SteamId(76561197985607672)).take(3);
+        let result = iter.to_steam_id_string(", ");
+        assert_eq!(
+            result.capacity(),
+            SteamId::MAX_DIGITS_FOR_U64 * 3 + ", ".len() * 2
         );
     }
 

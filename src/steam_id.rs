@@ -1,5 +1,7 @@
 use std::fmt;
 use std::fmt::Write;
+use std::str::FromStr;
+use thiserror::Error;
 
 /// Wrapper for `SteamID`s that is implemented according to [`Valve`](https://developer.valvesoftware.com/wiki/SteamID)
 ///
@@ -20,25 +22,29 @@ use std::fmt::Write;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SteamId(pub u64);
 
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("couldn't parse steam-id")]
+    InvalidString(#[from] std::num::ParseIntError),
+}
+pub type Result<T> = std::result::Result<T, ParseError>;
+
 impl fmt::Display for SteamId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        self.0.fmt(f)
     }
 }
 
-impl From<&str> for SteamId {
-    fn from(id: &str) -> Self {
-        SteamId(id.parse::<u64>().unwrap())
+impl FromStr for SteamId {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self> {
+        Ok(SteamId(s.parse::<u64>()?))
     }
 }
-impl From<String> for SteamId {
-    fn from(id: String) -> Self {
-        Self::from(id.as_str())
-    }
-}
-impl From<SteamId> for String {
-    fn from(id: SteamId) -> Self {
-        format!("{}", id.0)
+
+impl From<u64> for SteamId {
+    fn from(id: u64) -> Self {
+        Self(id)
     }
 }
 
@@ -46,8 +52,8 @@ impl SteamId {
     const Y_SHIFT: u64 = 0;
     const Y_MASK: u64 = (1 << 1) - 1;
 
-    const ACC_NR_SHIFT: u64 = 1;
-    const ACC_NR_MASK: u64 = (1 << 31) - 1;
+    const ACC_NR_SHIFT: u64 = 0;
+    const ACC_NR_MASK: u64 = (1 << 32) - 1;
 
     const INSTANCE_SHIFT: u64 = 32;
     const INSTANCE_MASK: u64 = (1 << 20) - 1;
