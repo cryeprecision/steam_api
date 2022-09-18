@@ -1,4 +1,6 @@
 use crate::constants::USER_SEARCH_API;
+use crate::request_helper::send_request;
+use crate::steam_id::SteamId;
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -53,13 +55,35 @@ pub struct UserSearchEntry {
 
 impl UserSearchEntry {
     /// Abbreviate the profile-url from the html-payload.
+    ///
+    /// # Example
+    ///
+    /// `https://steamcommunity.com/id/GabeLoganNewell => id/GabeLoganNewell`
+    /// `http://steamcommunity.com/profiles/76561197960287930 => profiles/76561197960287930`
     pub fn short_url(&self) -> Option<&str> {
         const ID: &str = "/profiles/";
         const URL: &str = "/id/";
-
         let find = self.profile_url.find(ID);
         let find = find.or_else(|| self.profile_url.find(URL));
         find.map(|idx| &self.profile_url[idx + 1..])
+    }
+    /// Get the [`SteamId`] from the URL if possible
+    ///
+    /// # Example
+    ///
+    /// `https://steamcommunity.com/id/GabeLoganNewell => GabeLoganNewell`
+    pub fn steam_id(&self) -> Option<SteamId> {
+        const ID: &str = "/profiles/";
+        SteamId::from_str(self.profile_url.split_once(ID)?.1).ok()
+    }
+    /// Get the `VanityURL` from the URL if possible
+    ///
+    /// # Example
+    ///
+    /// `http://steamcommunity.com/profiles/76561197960287930 => 76561197960287930`
+    pub fn vanity_url(&self) -> Option<&str> {
+        const URL: &str = "/id/";
+        Some(self.profile_url.split_once(URL)?.1)
     }
 }
 
@@ -207,7 +231,7 @@ pub async fn get_search_page(
         ("page", &page.to_string()),
     ];
     let req = client.get(USER_SEARCH_API).query(&headers);
-    let resp = crate::request_helper::send_request::<Response>(req, true, true).await?;
+    let resp = send_request::<Response>(req, true, true).await?;
     UserSearchPage::try_from(resp)
 }
 
@@ -249,31 +273,20 @@ mod tests {
     #[tokio::test]
     async fn it_works() {
         let (client, session_id) = client_with_session_id().await.unwrap();
-        let searches: [(&str, usize); _] = [
-            ("masterlooser", 1),
-            ("masterlooser", 2),
-            ("masterlooser", 3),
-            ("masterlooser", 4),
-            ("masterlooser", 5),
-            ("masterlooser", 6),
-            ("masterlooser", 7),
-            ("masterlooser", 8),
-            ("masterlooser", 9),
-            ("masterlooser", 10),
-            ("masterlooser", 11),
-            ("masterlooser", 12),
-            ("masterlooser", 13),
-            ("masterlooser", 14),
-            ("masterlooser", 69),
-        ];
+        let searches = std::iter::repeat("prog").zip(1..=148);
 
-        let mut stream = futures::stream::iter(searches.iter())
-            .map(|&(query, page)| get_search_page(&client, &session_id, query, page))
-            .buffered(4);
+        let mut stream = futures::stream::iter(searches)
+            .map(|(query, page)| get_search_page(&client, &session_id, query, page))
+            .buffer_unordered(20);
 
         while let Some(res) = stream.next().await {
             let res = res.unwrap();
-            println!("Results: {}/{}", res.results.len(), res.total_result_count);
+            println!(
+                "Page: {:03}, Results: {}/{}",
+                res.search_page,
+                res.results.len(),
+                res.total_result_count
+            );
         }
     }
 }

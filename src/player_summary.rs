@@ -1,5 +1,6 @@
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
 use crate::enums::{CommunityVisibilityState, PersonaState};
+use crate::request_helper::send_request;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
@@ -186,23 +187,21 @@ impl<'a> TryFrom<(Response, &'a [SteamId], SummaryMap)> for PlayerSummaries<'a> 
 
 impl std::fmt::Display for PlayerSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.steam_id)?;
+        let mut dbg = f.debug_struct("PlayerSummary");
+        dbg.field("SteamID", &self.steam_id);
         if let Some(time) = self.time_created {
-            write!(f, " ({})", time.format("%Y/%m/%d %H:%M:%S"))?
+            dbg.field("Created", &time.format("%Y/%m/%d %H:%M:%S").to_string());
         }
-        write!(f, ", {}", self.persona_name)?;
-        write!(f, ", {:?}", self.community_visibility_state)?;
-        if let Some(name) = &self.real_name {
-            write!(f, " ({})", name)?;
-        }
+        dbg.field("Name", &self.persona_name);
+        dbg.field("Vis", &self.community_visibility_state);
         if let Some(country_code) = &self.local_country_code {
-            write!(f, ", {}", country_code)?;
+            dbg.field("CC", &country_code);
         }
-        write!(f, ", {:?}", self.persona_state)?;
+        dbg.field("PersState", &self.persona_state);
         if let Some(t) = &self.last_logoff {
-            write!(f, ", {}", t.format("%Y/%m/%d %H:%M:%S"))?
+            dbg.field("LastLogoff", &t.format("%Y/%m/%d %H:%M:%S").to_string());
         }
-        Ok(())
+        dbg.finish()
     }
 }
 
@@ -228,7 +227,7 @@ pub async fn get_player_summaries<'a>(
     let ids = steam_id_chunk.iter().to_steam_id_string(",");
     let query = [("key", api_key), ("steamids", &ids)];
     let req = client.get(PLAYER_SUMMARIES_API).query(&query);
-    let resp = crate::request_helper::send_request::<Response>(req, true, true).await?;
+    let resp = send_request::<Response>(req, true, true).await?;
 
     PlayerSummaries::try_from((resp, steam_id_chunk, map))
 }

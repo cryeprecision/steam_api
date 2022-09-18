@@ -1,4 +1,5 @@
 use crate::constants::VANITY_API;
+use crate::request_helper::send_request;
 use crate::steam_id::SteamId;
 
 use std::convert::TryFrom;
@@ -56,7 +57,7 @@ pub async fn resolve_vanity_url<'a>(
 ) -> Result<VanityUrl<'a>> {
     let query = [("key", api_key), ("vanityurl", vanity_url)];
     let req = client.get(VANITY_API).query(&query);
-    let resp = crate::request_helper::send_request::<Response>(req, true, true).await?;
+    let resp = send_request::<Response>(req, true, true).await?;
     VanityUrl::try_from((resp, vanity_url))
 }
 
