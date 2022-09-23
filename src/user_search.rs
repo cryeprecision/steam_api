@@ -1,4 +1,5 @@
 use crate::constants::USER_SEARCH_API;
+use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request;
 use crate::steam_id::SteamId;
 
@@ -106,9 +107,9 @@ pub struct UserSearchPage {
     pub results: Vec<UserSearchEntry>,
 }
 
-impl TryFrom<Response> for UserSearchPage {
+impl ParseResponse<Response> for UserSearchPage {
     type Error = UserSearchError;
-    fn try_from(value: Response) -> Result<Self> {
+    fn parse_response(value: Response) -> Result<Self> {
         if value.success != 1 {
             return Err(UserSearchError::NoSuccess);
         }
@@ -232,7 +233,7 @@ pub async fn get_search_page(
     ];
     let req = client.get(USER_SEARCH_API).query(&headers);
     let resp = send_request::<Response>(req, true, true).await?;
-    UserSearchPage::try_from(resp)
+    UserSearchPage::parse_response(resp)
 }
 
 /// Create a [`Client`] with a [`CookieStore`] and send a request to [`USER_SEARCH_API`].

@@ -3,7 +3,6 @@ use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::parse_response::ParseResponse;
 use crate::steam_id::SteamId;
 
-use std::convert::TryFrom;
 use std::str::FromStr;
 
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -155,9 +154,7 @@ mod tests {
                     continue;
                 }
             };
-            for friend in res.iter() {
-                println!("[{}] {} ({})", id, friend.steam_id, friend.friends_since);
-            }
+            println!("[{}] {} friends", id, res.len());
         }
     }
 }

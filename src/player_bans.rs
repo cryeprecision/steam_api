@@ -6,7 +6,6 @@ use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::str::FromStr;
 
 use reqwest::Client;

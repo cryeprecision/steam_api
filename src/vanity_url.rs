@@ -1,9 +1,9 @@
 use crate::constants::VANITY_API;
 use crate::constants::{RETRIES, WAIT_DURATION};
+use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 
-use std::convert::TryFrom;
 use std::str::FromStr;
 
 use reqwest::Client;
@@ -14,8 +14,6 @@ use thiserror::Error;
 pub enum VanityUrlError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
-    #[error("invalid vanity-url: {0}")]
-    InvalidVanityUrl(String),
     #[error("invalid steam-id: {0}")]
     InvalidSteamId(String),
 }
@@ -31,32 +29,28 @@ struct Response {
     response: ResponseInner,
 }
 
-#[derive(Debug)]
-pub struct VanityUrl<'a> {
-    pub vanity_url: &'a str,
-    pub steam_id: SteamId,
-}
-
-impl<'a> TryFrom<(Response, &'a str)> for VanityUrl<'a> {
+impl ParseResponse<Response> for Option<SteamId> {
     type Error = VanityUrlError;
-    fn try_from((response, url): (Response, &'a str)) -> Result<Self> {
-        let id = response.response.steam_id;
-        let id = id.ok_or(VanityUrlError::InvalidVanityUrl(url.to_owned()))?;
-        let id = SteamId::from_str(&id).map_err(|_| VanityUrlError::InvalidSteamId(id.to_owned()));
-        Ok(Self {
-            vanity_url: url,
-            steam_id: id?,
-        })
+    fn parse_response(value: Response) -> Result<Self> {
+        let id = match value.response.steam_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+        match SteamId::from_str(&id) {
+            Err(_) => Err(VanityUrlError::InvalidSteamId(id.to_owned())),
+            Ok(id) => Ok(Some(id)),
+        }
     }
 }
 
 /// Resolve a Vanity-URL using [`this endpoint`](https://partner.steamgames.com/doc/webapi/ISteamUser#ResolveVanityURL).
-pub async fn resolve_vanity_url<'a>(
-    client: &'a Client,
-    api_key: &'a str,
-    vanity_url: &'a str,
-) -> Result<VanityUrl<'a>> {
+pub async fn resolve_vanity_url(
+    client: &Client,
+    api_key: &str,
+    vanity_url: &str,
+) -> Result<Option<SteamId>> {
     let query = [("key", api_key), ("vanityurl", vanity_url)];
+
     let resp = send_request_with_reties(
         client,
         VANITY_API,
@@ -68,38 +62,38 @@ pub async fn resolve_vanity_url<'a>(
     )
     .await?;
 
-    VanityUrl::try_from((resp, vanity_url))
+    Option::<SteamId>::parse_response(resp)
 }
 
 #[cfg(test)]
 mod tests {
     use super::resolve_vanity_url;
-    use futures::StreamExt;
+    use futures::{FutureExt, StreamExt};
 
     #[tokio::test]
     async fn it_works() {
         // https://steamcommunity.com/id/GabeLoganNewell
         // https://steamcommunity.com/id/john
         // https://steamcommunity.com/id/4in50ayimf
-        let urls = ["GabeLoganNewell", "john", "4in50ayimf", "a", "b", "c", "d"];
+        let urls = ["GabeLoganNewell", "john", "4in50ayimf"];
 
         dotenv::dotenv().unwrap();
         let client = reqwest::Client::new();
         let api_key = dotenv::var("STEAM_API_KEY").unwrap();
 
         let mut stream = futures::stream::iter(urls.iter().map(|&u| u))
-            .map(|url| resolve_vanity_url(&client, &api_key, url))
+            .map(|url| resolve_vanity_url(&client, &api_key, url).map(move |r| (r, url)))
             .buffer_unordered(2);
 
-        while let Some(res) = stream.next().await {
-            let inner = match res {
+        while let Some((res, url)) = stream.next().await {
+            let id = match res {
                 Err(err) => {
-                    println!("Request failed: {}", err);
+                    println!("[{}] err: {}", url, err);
                     continue;
                 }
-                Ok(val) => val,
+                Ok(id) => id,
             };
-            println!("{} => {}", inner.vanity_url, inner.steam_id);
+            println!("[{}] {:?}", url, id);
         }
     }
 }

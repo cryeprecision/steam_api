@@ -1,6 +1,7 @@
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
 use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::enums::{CommunityVisibilityState, PersonaState};
+use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
@@ -115,9 +116,9 @@ pub struct PlayerSummary {
 /// its corresponding entry will be `None`
 pub type SummaryMap = HashMap<SteamId, Option<PlayerSummary>>;
 
-impl TryFrom<ResponseInnerElement> for PlayerSummary {
+impl ParseResponse<ResponseInnerElement> for PlayerSummary {
     type Error = PlayerSummaryError;
-    fn try_from(value: ResponseInnerElement) -> Result<Self> {
+    fn parse_response(value: ResponseInnerElement) -> Result<Self> {
         let last_logoff = value
             .last_logoff
             .map(|unix| Utc.timestamp(unix as i64, 0))
@@ -166,26 +167,6 @@ impl TryFrom<ResponseInnerElement> for PlayerSummary {
     }
 }
 
-#[derive(Debug)]
-pub struct PlayerSummaries<'a> {
-    pub query: &'a [SteamId],
-    pub summaries: SummaryMap,
-}
-
-impl<'a> TryFrom<(Response, &'a [SteamId], SummaryMap)> for PlayerSummaries<'a> {
-    type Error = PlayerSummaryError;
-    fn try_from((response, query, mut map): (Response, &'a [SteamId], SummaryMap)) -> Result<Self> {
-        for inner_elem in response.response.players.into_iter() {
-            let summary = PlayerSummary::try_from(inner_elem)?;
-            let _ = map.insert(summary.steam_id, Some(summary));
-        }
-        Ok(Self {
-            query: query,
-            summaries: map,
-        })
-    }
-}
-
 impl std::fmt::Display for PlayerSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("PlayerSummary");
@@ -213,7 +194,7 @@ pub async fn get_player_summaries<'a>(
     client: &'a reqwest::Client,
     api_key: &'a str,
     steam_id_chunk: &'a [SteamId],
-) -> Result<PlayerSummaries<'a>> {
+) -> Result<SummaryMap> {
     if steam_id_chunk.len() > PLAYER_SUMMARIES_IDS_PER_REQUEST {
         return Err(PlayerSummaryError::TooManyIds);
     }
@@ -227,7 +208,7 @@ pub async fn get_player_summaries<'a>(
 
     let ids = steam_id_chunk.iter().to_steam_id_string(",");
     let query = [("key", api_key), ("steamids", &ids)];
-    let resp = send_request_with_reties(
+    let resp = send_request_with_reties::<Response>(
         client,
         PLAYER_SUMMARIES_API,
         &query,
@@ -238,7 +219,12 @@ pub async fn get_player_summaries<'a>(
     )
     .await?;
 
-    PlayerSummaries::try_from((resp, steam_id_chunk, map))
+    for elem in resp.response.players.into_iter() {
+        let sum = PlayerSummary::parse_response(elem)?;
+        let _ = map.insert(sum.steam_id, Some(sum));
+    }
+
+    Ok(map)
 }
 
 #[cfg(test)]
@@ -277,7 +263,7 @@ mod tests {
             .buffer_unordered(2);
 
         while let Some(res) = stream.next().await {
-            for (id, summary) in res.unwrap().summaries.iter() {
+            for (id, summary) in res.unwrap().iter() {
                 if let Some(summary) = summary {
                     println!("{}", summary);
                 } else {
