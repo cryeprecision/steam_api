@@ -1,4 +1,5 @@
 use crate::constants::PLAYER_FRIENDS_API;
+use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::steam_id::SteamId;
 
 use std::convert::TryFrom;
@@ -8,6 +9,7 @@ use chrono::{DateTime, Local, TimeZone, Utc};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use thiserror::Error;
+use tokio::time::sleep;
 
 #[derive(Error, Debug)]
 pub enum PlayerFriendsError {
@@ -46,7 +48,7 @@ struct Response {
 }
 
 #[derive(Debug)]
-pub struct FriendListEntry {
+pub struct Friend {
     pub steam_id: SteamId,
     pub friends_since: DateTime<Local>,
 }
@@ -54,10 +56,10 @@ pub struct FriendListEntry {
 #[derive(Debug)]
 pub struct FriendList {
     pub steam_id: SteamId,
-    pub friends: Vec<FriendListEntry>,
+    pub friends: Vec<Friend>,
 }
 
-impl TryFrom<ResponseInnerElement> for FriendListEntry {
+impl TryFrom<ResponseInnerElement> for Friend {
     type Error = PlayerFriendsError;
     fn try_from(value: ResponseInnerElement) -> Result<Self> {
         let id = SteamId::from_str(&value.steam_id)
@@ -75,9 +77,7 @@ impl TryFrom<(Response, SteamId)> for FriendList {
     type Error = PlayerFriendsError;
     fn try_from((response, id): (Response, SteamId)) -> Result<Self> {
         let friends = response.friend_list.unwrap_or_default().friends.into_iter();
-        let friends = friends
-            .map(FriendListEntry::try_from)
-            .collect::<Result<Vec<_>>>()?;
+        let friends = friends.map(Friend::try_from).collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
             steam_id: id,
@@ -86,7 +86,7 @@ impl TryFrom<(Response, SteamId)> for FriendList {
     }
 }
 
-/// Get the friends of the profile with the given [SteamId]
+/// Get the friends of the profile with the given [`SteamId`]
 ///
 /// Uses [`PLAYER_FRIENDS_API`]
 pub async fn get_player_friends(client: &Client, api_key: &str, id: SteamId) -> Result<FriendList> {
@@ -95,13 +95,26 @@ pub async fn get_player_friends(client: &Client, api_key: &str, id: SteamId) -> 
         ("relationship", "friend"),
         ("steamid", &id.to_string()),
     ];
-    let req = client.get(PLAYER_FRIENDS_API).query(&query);
-    let resp = req.send().await?;
 
-    if resp.status() == StatusCode::UNAUTHORIZED {
-        return Err(PlayerFriendsError::Unauthorized);
-    }
-    let resp = resp.error_for_status()?.json::<Response>().await?;
+    let mut retries = 0_usize;
+    let resp = loop {
+        let req = client.get(PLAYER_FRIENDS_API).query(&query);
+        let resp = req.send().await?;
+
+        // This means the profile has been deleted or is private
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            return Err(PlayerFriendsError::Unauthorized);
+        }
+        let err = match resp.error_for_status() {
+            Ok(resp) => break resp.json::<Response>().await?,
+            Err(err) => err,
+        };
+        if retries >= RETRIES {
+            return Err(err.into());
+        }
+        retries += 1;
+        sleep(WAIT_DURATION).await;
+    };
 
     FriendList::try_from((resp, id))
 }

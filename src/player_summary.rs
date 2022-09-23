@@ -1,6 +1,7 @@
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
+use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::enums::{CommunityVisibilityState, PersonaState};
-use crate::request_helper::send_request;
+use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
@@ -226,8 +227,16 @@ pub async fn get_player_summaries<'a>(
 
     let ids = steam_id_chunk.iter().to_steam_id_string(",");
     let query = [("key", api_key), ("steamids", &ids)];
-    let req = client.get(PLAYER_SUMMARIES_API).query(&query);
-    let resp = send_request::<Response>(req, true, true).await?;
+    let resp = send_request_with_reties(
+        client,
+        PLAYER_SUMMARIES_API,
+        &query,
+        true,
+        true,
+        RETRIES,
+        WAIT_DURATION,
+    )
+    .await?;
 
     PlayerSummaries::try_from((resp, steam_id_chunk, map))
 }

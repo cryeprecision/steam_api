@@ -1,5 +1,6 @@
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
-use crate::request_helper::send_request;
+use crate::constants::{RETRIES, WAIT_DURATION};
+use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
@@ -139,9 +140,16 @@ pub async fn get_player_bans<'a>(
 
     let ids = steam_id_chunk.iter().to_steam_id_string(",");
     let query = [("key", api_key), ("steamids", &ids)];
-    let req = client.get(PLAYER_BANS_API).query(&query);
-
-    let resp = send_request::<Response>(req, true, true).await?;
+    let resp = send_request_with_reties(
+        client,
+        PLAYER_BANS_API,
+        &query,
+        true,
+        true,
+        RETRIES,
+        WAIT_DURATION,
+    )
+    .await?;
 
     PlayerBans::try_from((resp, steam_id_chunk, map))
 }

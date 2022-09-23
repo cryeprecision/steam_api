@@ -3,17 +3,12 @@
 //! # Current state
 //!
 //! Currently provides abstractions for the following endpoints:
-//! - [X] [`api.steampowered.com/ISteamUser/ResolveVanityURL/v1/`]
-//! - [X] [`api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/`]
-//! - [X] [`api.steampowered.com/ISteamUser/GetFriendList/v1/`]
-//! - [X] [`api.steampowered.com/ISteamUser/GetPlayerBans/v1/`]
-//! - [X] [`steamcommunity.com/search/SearchCommunityAjax/`]
-//!
-//! [`api.steampowered.com/ISteamUser/ResolveVanityURL/v1/`]: https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/
-//! [`api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/`]: https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/
-//! [`api.steampowered.com/ISteamUser/GetFriendList/v1/`]: https://api.steampowered.com/ISteamUser/GetFriendList/v1/
-//! [`api.steampowered.com/ISteamUser/GetPlayerBans/v1/`]: https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/
-//! [`steamcommunity.com/search/SearchCommunityAjax/`]: https://steamcommunity.com/search/SearchCommunityAjax/
+//! - [X] [`api.steampowered.com/ISteamUser/ResolveVanityURL/v1/`][constants::VANITY_API]
+//! - [X] [`api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/`][constants::PLAYER_SUMMARIES_API]
+//! - [X] [`api.steampowered.com/ISteamUser/GetFriendList/v1/`][constants::PLAYER_FRIENDS_API]
+//! - [X] [`api.steampowered.com/ISteamUser/GetPlayerBans/v1/`][constants::PLAYER_BANS_API]
+//! - [X] [`api.steampowered.com/IPlayerService/GetSteamLevel/v1/`][constants::PLAYER_STEAM_LEVEL_API]
+//! - [X] [`steamcommunity.com/search/SearchCommunityAjax/`][constants::USER_SEARCH_API]
 //!
 //! # Other
 //!
@@ -26,6 +21,7 @@ pub mod constants;
 mod request_helper;
 
 mod enums;
+
 pub use enums::*;
 
 mod steam_id;
@@ -51,6 +47,9 @@ pub use player_bans::*;
 
 mod player_friends;
 pub use player_friends::*;
+
+mod steam_level;
+pub use steam_level::*;
 
 #[cfg(feature = "user_search")]
 mod user_search;

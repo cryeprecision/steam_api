@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PersonaState {
     Offline = 0,
     Online = 1,
@@ -26,7 +26,7 @@ impl PersonaState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CommunityVisibilityState {
     Private = 1,
     FriendsOnly = 2,
