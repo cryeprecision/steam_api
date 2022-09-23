@@ -1,5 +1,6 @@
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
 use crate::constants::{RETRIES, WAIT_DURATION};
+use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
@@ -70,9 +71,9 @@ pub struct PlayerBan {
 /// its corresponding entry will be `None`
 pub type BanMap = HashMap<SteamId, Option<PlayerBan>>;
 
-impl TryFrom<ResponseElement> for PlayerBan {
+impl ParseResponse<ResponseElement> for PlayerBan {
     type Error = PlayerBanError;
-    fn try_from(value: ResponseElement) -> Result<Self> {
+    fn parse_response(value: ResponseElement) -> Result<Self> {
         let steam_id = SteamId::from_str(&value.steam_id)
             .map_err(|_| PlayerBanError::InvalidSteamId(value.steam_id))?;
 
@@ -84,25 +85,6 @@ impl TryFrom<ResponseElement> for PlayerBan {
             days_since_last_ban: value.days_since_last_ban,
             number_of_game_bans: value.number_of_game_bans,
             economy_ban: value.economy_ban,
-        })
-    }
-}
-
-pub struct PlayerBans<'a> {
-    pub query: &'a [SteamId],
-    pub bans: BanMap,
-}
-
-impl<'a> TryFrom<(Response, &'a [SteamId], BanMap)> for PlayerBans<'a> {
-    type Error = PlayerBanError;
-    fn try_from((response, query, mut map): (Response, &'a [SteamId], BanMap)) -> Result<Self> {
-        for elem in response.players.into_iter() {
-            let ban = PlayerBan::try_from(elem)?;
-            let _ = map.insert(ban.steam_id, Some(ban));
-        }
-        Ok(Self {
-            query: query,
-            bans: map,
         })
     }
 }
@@ -122,11 +104,11 @@ impl std::fmt::Display for PlayerBan {
 /// Get the bans of the profiles with the given [SteamId]
 ///
 /// Uses [`PLAYER_BANS_API`]
-pub async fn get_player_bans<'a>(
-    client: &'a Client,
-    api_key: &'a str,
-    steam_id_chunk: &'a [SteamId],
-) -> Result<PlayerBans<'a>> {
+pub async fn get_player_bans(
+    client: &Client,
+    api_key: &str,
+    steam_id_chunk: &[SteamId],
+) -> Result<BanMap> {
     if steam_id_chunk.len() > PLAYER_BANS_IDS_PER_REQUEST {
         return Err(PlayerBanError::TooManyIds);
     }
@@ -140,7 +122,7 @@ pub async fn get_player_bans<'a>(
 
     let ids = steam_id_chunk.iter().to_steam_id_string(",");
     let query = [("key", api_key), ("steamids", &ids)];
-    let resp = send_request_with_reties(
+    let resp = send_request_with_reties::<Response>(
         client,
         PLAYER_BANS_API,
         &query,
@@ -151,7 +133,12 @@ pub async fn get_player_bans<'a>(
     )
     .await?;
 
-    PlayerBans::try_from((resp, steam_id_chunk, map))
+    for elem in resp.players.into_iter() {
+        let ban = PlayerBan::parse_response(elem)?;
+        let _ = map.insert(ban.steam_id, Some(ban));
+    }
+
+    Ok(map)
 }
 
 #[cfg(test)]
@@ -190,7 +177,7 @@ mod tests {
             .buffered(10);
 
         while let Some(res) = stream.next().await {
-            for (id, ban) in res.unwrap().bans.iter() {
+            for (id, ban) in res.unwrap().iter() {
                 if let Some(ban) = ban {
                     println!("{}", ban);
                 } else {

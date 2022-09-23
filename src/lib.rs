@@ -51,6 +51,8 @@ pub use player_friends::*;
 mod steam_level;
 pub use steam_level::*;
 
+mod parse_response;
+
 #[cfg(feature = "user_search")]
 mod user_search;
 #[cfg(feature = "user_search")]
