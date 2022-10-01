@@ -4,6 +4,7 @@ use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
+use crate::EconomyBan;
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -63,7 +64,7 @@ pub struct PlayerBan {
     pub number_of_vac_bans: i32,
     pub days_since_last_ban: i32,
     pub number_of_game_bans: i32,
-    pub economy_ban: String,
+    pub economy_ban: EconomyBan,
 }
 
 /// If a given [`SteamId`] does not exist anymore,
@@ -83,7 +84,7 @@ impl ParseResponse<ResponseElement> for PlayerBan {
             number_of_vac_bans: value.number_of_vac_bans,
             days_since_last_ban: value.days_since_last_ban,
             number_of_game_bans: value.number_of_game_bans,
-            economy_ban: value.economy_ban,
+            economy_ban: EconomyBan::from(value.economy_ban),
         })
     }
 }
@@ -96,6 +97,7 @@ impl std::fmt::Display for PlayerBan {
             .field("GameBan", &self.number_of_game_bans)
             .field("CommunityBan", &self.community_banned)
             .field("LastBan", &self.days_since_last_ban)
+            .field("Econ", &self.economy_ban)
             .finish_non_exhaustive()
     }
 }

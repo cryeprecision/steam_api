@@ -3,7 +3,6 @@ use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request;
 use crate::steam_id::SteamId;
 
-use std::convert::TryFrom;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;

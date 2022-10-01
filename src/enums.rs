@@ -43,3 +43,22 @@ impl CommunityVisibilityState {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EconomyBan {
+    None,
+    Probation,
+    Banned,
+    Unknown(String),
+}
+
+impl From<String> for EconomyBan {
+    fn from(str: String) -> Self {
+        match str.as_str() {
+            "none" => EconomyBan::None,
+            "probation" => EconomyBan::Probation,
+            "banned" => EconomyBan::Banned,
+            _ => EconomyBan::Unknown(str),
+        }
+    }
+}

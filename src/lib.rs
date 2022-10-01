@@ -24,6 +24,9 @@ mod enums;
 
 pub use enums::*;
 
+mod client;
+pub use client::*;
+
 mod steam_id;
 pub use steam_id::*;
 

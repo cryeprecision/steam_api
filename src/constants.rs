@@ -23,7 +23,6 @@ pub const PLAYER_BANS_IDS_PER_REQUEST: usize = 100;
 pub const PLAYER_STEAM_LEVEL_API: &str =
     "https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/";
 pub const PLAYER_STEAM_LEVEL_CONCURRENT_REQUESTS: usize = 100;
-pub const PLAYER_STEAM_LEVEL_IDS_PER_REQUEST: usize = 100;
 
 /// Not documented
 pub const USER_SEARCH_API: &str = "https://steamcommunity.com/search/SearchCommunityAjax/";

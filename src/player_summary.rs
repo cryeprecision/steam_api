@@ -7,7 +7,6 @@ use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::str::FromStr;
 
 use chrono::TimeZone;
@@ -190,10 +189,10 @@ impl std::fmt::Display for PlayerSummary {
 /// Get the summaries of the profiles with the given [SteamId]
 ///
 /// Uses [`PLAYER_SUMMARIES_API`]
-pub async fn get_player_summaries<'a>(
-    client: &'a reqwest::Client,
-    api_key: &'a str,
-    steam_id_chunk: &'a [SteamId],
+pub async fn get_player_summaries(
+    client: &reqwest::Client,
+    api_key: &str,
+    steam_id_chunk: &[SteamId],
 ) -> Result<SummaryMap> {
     if steam_id_chunk.len() > PLAYER_SUMMARIES_IDS_PER_REQUEST {
         return Err(PlayerSummaryError::TooManyIds);
