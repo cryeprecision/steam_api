@@ -1,4 +1,4 @@
-//! SteamAPI abstraction, that tries to make bulk requests as fast as possible.
+//! `SteamAPI` abstraction, that tries to make bulk requests as fast as possible.
 //!
 //! # Current state
 //!
