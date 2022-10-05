@@ -18,7 +18,7 @@ pub trait SteamIdExt: Iterator {
         let mut buf = String::with_capacity(cap);
         if let Some(id) = self.next() {
             write!(buf, "{}", id.borrow()).unwrap();
-            while let Some(id) = self.next() {
+            for id in self {
                 buf.push_str(sep);
                 write!(buf, "{}", id.borrow()).unwrap();
             }
@@ -41,7 +41,7 @@ pub trait SteamIdExt: Iterator {
         let mut buf = String::new();
         if let Some(id) = self.next() {
             write!(buf, "{}", f(id.borrow())).unwrap();
-            while let Some(id) = self.next() {
+            for id in self {
                 buf.push_str(sep);
                 write!(buf, "{}", f(id.borrow())).unwrap();
             }

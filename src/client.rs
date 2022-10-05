@@ -22,6 +22,12 @@ pub struct ClientOptions {
     dont_retry: Vec<StatusCode>,
 }
 
+impl Default for ClientOptions {
+    fn default() -> Self {
+        ClientOptions::new()
+    }
+}
+
 impl ClientOptions {
     pub fn new() -> Self {
         Self {
@@ -108,10 +114,10 @@ impl ClientOptions {
         Client {
             retry_timeout: self.retry_timeout.unwrap_or(Duration::from_millis(1000)),
             max_retries: self.max_retries.unwrap_or(3),
-            dont_retry: dont_retry,
-            session_id: session_id,
+            dont_retry,
+            session_id,
             api_keys: self.api_keys,
-            client: client,
+            client,
             retries: AtomicUsize::new(0),
         }
     }

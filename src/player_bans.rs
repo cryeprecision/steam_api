@@ -76,7 +76,7 @@ impl ParseResponse<ResponseElement> for PlayerBan {
             .map_err(|_| PlayerBanError::InvalidSteamId(value.steam_id))?;
 
         Ok(Self {
-            steam_id: steam_id,
+            steam_id,
             community_banned: value.community_banned,
             vac_banned: value.vac_banned,
             number_of_vac_bans: value.number_of_vac_bans,

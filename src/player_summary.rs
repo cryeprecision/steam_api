@@ -144,7 +144,7 @@ impl ParseResponse<ResponseInnerElement> for PlayerSummary {
             .map_err(|_| PlayerSummaryError::InvalidSteamId(value.steam_id))?;
 
         Ok(Self {
-            steam_id: steam_id,
+            steam_id,
             community_visibility_state: vis_state,
             profile_configured: value.profile_state.is_some(),
             persona_name: value.persona_name,
@@ -153,11 +153,11 @@ impl ParseResponse<ResponseInnerElement> for PlayerSummary {
             avatar_medium: value.avatar_medium,
             avatar_full: value.avatar_full,
             avatar_hash: value.avatar_hash,
-            last_logoff: last_logoff,
-            persona_state: persona_state,
+            last_logoff,
+            persona_state,
             real_name: value.real_name,
             primary_clan_id: clan_id,
-            time_created: time_created,
+            time_created,
             persona_state_flags: value.persona_state_flags,
             local_country_code: value.local_country_code,
         })
@@ -195,7 +195,7 @@ impl Client {
 
         let mut map = SummaryMap::with_capacity(steam_id_chunk.len());
         for &id in steam_id_chunk {
-            if let Some(_) = map.insert(id, None) {
+            if map.insert(id, None).is_some() {
                 return Err(PlayerSummaryError::NonUniqueIds(id));
             }
         }
