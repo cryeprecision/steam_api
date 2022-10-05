@@ -48,50 +48,81 @@ pub async fn get_player_steam_level(
     Ok(resp.response.player_level)
 }
 
+impl crate::client::Client {
+    pub async fn get_player_steam_level(&self, id: SteamId) -> Result<Option<usize>> {
+        let query = [("key", self.api_key()), ("steamid", &id.to_string())];
+        let resp = self
+            .get_json::<Response>(PLAYER_STEAM_LEVEL_API, &query)
+            .await?;
+        Ok(resp.response.player_level)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::get_player_steam_level;
+    use crate::rate_limit::rate_limit;
     use crate::steam_id::SteamId;
+    use crate::{Client, ClientOptions};
     use futures::{FutureExt, StreamExt};
+    use indicatif::{MultiProgress, ProgressBar};
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn it_works() {
+        // https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=E84C8EF965448E02C469BB3228D46311&steamid=76561198196615742
+        // https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=E84C8EF965448E02C469BB3228D46311&steamid=76561198089612262
+        // https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=E84C8EF965448E02C469BB3228D46311&steamid=76561197992321696
+        // https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=E84C8EF965448E02C469BB3228D46311&steamid=76561198350302388
+        // https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=E84C8EF965448E02C469BB3228D46311&steamid=76561198159967543
+        // https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/?key=E84C8EF965448E02C469BB3228D46311&steamid=76561199063760869
+
         let ids: [SteamId; _] = [
-            76561199123543583.into(),
-            76561198196615742.into(),
-            76561199159691884.into(),
-            76561198230177976.into(),
-            76561198414415313.into(),
-            76561197992321696.into(),
-            76561198350302388.into(),
-            76561198159967543.into(),
-            76561197981967565.into(),
-            76561199049236696.into(),
-            76561199063760869.into(),
-            76561197961074129.into(),
-            76561198292293761.into(),
-            76561198145832850.into(),
-            76561198151659207.into(),
-            76561198405122517.into(),
+            76561198196615742.into(), // normal, private friends
+            76561198089612262.into(), // normal, public friends
+            76561197992321696.into(), // deleted
+            76561198350302388.into(), // community banned
+            76561198159967543.into(), // private
+            76561199063760869.into(), // private
         ];
 
         dotenv::dotenv().unwrap();
-        let client = reqwest::Client::new();
         let api_key = dotenv::var("STEAM_API_KEY").unwrap();
+        let client = ClientOptions::new()
+            .api_key(api_key)
+            .retries(5)
+            .retry_timeout_ms(1000)
+            .build()
+            .await;
 
-        let mut stream = futures::stream::iter(ids.iter())
-            .map(|&id| get_player_steam_level(&client, &api_key, id).map(move |r| (id, r)))
-            .buffer_unordered(2);
+        const COUNT: usize = 2000;
+        const PARALLEL: usize = 10;
+        const PER_SEC: u64 = 100;
 
-        while let Some((id, res)) = stream.next().await {
-            let res = match res {
-                Ok(res) => res,
-                Err(err) => {
-                    println!("{}", err);
-                    continue;
-                }
-            };
-            println!("{} = {:?}", id, res);
+        let bars = MultiProgress::new();
+        let bar_recv = bars.add(ProgressBar::new(COUNT as u64));
+        let bar_diff = bars.add(ProgressBar::new(10));
+
+        let mut stream = futures::stream::iter(ids.iter().cycle().take(2000))
+            .map(|&id| {
+                bar_diff.inc(1);
+                client.get_player_steam_level(id).map(move |r| (id, r))
+            })
+            .buffer_unordered(PARALLEL);
+
+        let mut buffer = Vec::with_capacity(COUNT);
+        while let Some((id, lvl)) = stream.next().await {
+            bar_diff.set_position(bar_diff.position().saturating_sub(1));
+            bar_recv.inc(1);
+            buffer.push((id, lvl.unwrap()));
+        }
+
+        bar_diff.abandon();
+        bar_recv.abandon();
+
+        buffer.sort_by_key(|(_, lvl)| std::cmp::Reverse(*lvl));
+
+        for (id, lvl) in buffer.iter().take(20) {
+            println!("{}: {:?}", id, lvl);
         }
     }
 }

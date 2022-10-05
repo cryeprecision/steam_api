@@ -2,11 +2,12 @@ use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
 use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::parse_response::ParseResponse;
 use crate::request_helper::send_request_with_reties;
-use crate::steam_id::SteamId;
+use crate::steam_id::{self, SteamId};
 use crate::steam_id_ext::SteamIdExt;
 use crate::EconomyBan;
 
 use std::collections::HashMap;
+use std::iter::repeat;
 use std::str::FromStr;
 
 use reqwest::Client;
@@ -142,10 +143,39 @@ pub async fn get_player_bans(
     Ok(map)
 }
 
+impl crate::client::Client {
+    /// Get the bans of the profiles with the given [SteamId]
+    ///
+    /// Uses [`PLAYER_BANS_API`]
+    pub async fn get_player_bans(&self, steam_id_chunk: &[SteamId]) -> Result<BanMap> {
+        if steam_id_chunk.len() > PLAYER_BANS_IDS_PER_REQUEST {
+            return Err(PlayerBanError::TooManyIds);
+        }
+
+        let mut map = BanMap::with_capacity(steam_id_chunk.len());
+        for &id in steam_id_chunk {
+            if map.insert(id, None).is_some() {
+                return Err(PlayerBanError::NonUniqueIds(id));
+            }
+        }
+
+        let ids = steam_id_chunk.iter().to_steam_id_string(",");
+        let query = [("key", self.api_key()), ("steamids", &ids)];
+
+        let resp = self.get_json::<Response>(PLAYER_BANS_API, &query).await?;
+
+        for elem in resp.players.into_iter() {
+            let ban = PlayerBan::parse_response(elem)?;
+            let _ = map.insert(ban.steam_id, Some(ban));
+        }
+
+        Ok(map)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::get_player_bans;
-    use crate::steam_id::SteamId;
+    use crate::{steam_id::SteamId, ClientOptions};
     use futures::StreamExt;
 
     #[tokio::test]
@@ -170,12 +200,12 @@ mod tests {
         ];
 
         dotenv::dotenv().unwrap();
-        let client = reqwest::Client::new();
         let api_key = dotenv::var("STEAM_API_KEY").unwrap();
+        let client = ClientOptions::new().api_key(api_key).build().await;
 
-        let mut stream = futures::stream::iter(ids.iter().map(|&ids| ids))
-            .map(|ids| get_player_bans(&client, &api_key, ids))
-            .buffered(10);
+        let mut stream = futures::stream::iter(ids.iter().cloned())
+            .map(|ids| client.get_player_bans(ids))
+            .buffer_unordered(2);
 
         while let Some(res) = stream.next().await {
             for (id, ban) in res.unwrap().iter() {

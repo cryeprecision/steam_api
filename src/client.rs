@@ -1,21 +1,23 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
-use tokio::time::{interval, Interval, MissedTickBehavior};
 
 pub struct Client {
     retry_timeout: Duration,
-    retries: usize,
+    max_retries: usize,
     dont_retry: Vec<StatusCode>,
     session_id: String,
     api_keys: Vec<String>,
     client: reqwest::Client,
+    retries: AtomicUsize,
 }
 
+// TODO: Make getting session_id optional since it requires a request on construction
 pub struct ClientOptions {
     retry_timeout: Option<Duration>,
-    retries: Option<usize>,
+    max_retries: Option<usize>,
     api_keys: Vec<String>,
     dont_retry: Vec<StatusCode>,
 }
@@ -24,7 +26,7 @@ impl ClientOptions {
     pub fn new() -> Self {
         Self {
             retry_timeout: None,
-            retries: None,
+            max_retries: None,
             api_keys: Vec::new(),
             dont_retry: Vec::new(),
         }
@@ -37,7 +39,7 @@ impl ClientOptions {
         self.retry_timeout(Duration::from_millis(ms))
     }
     pub fn retries(mut self, retries: usize) -> Self {
-        self.retries = Some(retries);
+        self.max_retries = Some(retries);
         self
     }
     pub fn api_key(mut self, key: String) -> Self {
@@ -63,6 +65,8 @@ impl ClientOptions {
         use std::str::FromStr;
         use std::sync::Arc;
 
+        const SESSION_ID: &str = "sessionid=";
+
         let url = Url::from_str("https://steamcommunity.com/").ok()?;
 
         let jar = Arc::new(Jar::default());
@@ -80,8 +84,8 @@ impl ClientOptions {
         let session_id = cookie_str
             .split(';')
             .map(str::trim_start)
-            .find(|&str| str.starts_with("sessionid="))
-            .map(|str| &str[10..])?;
+            .find(|&str| str.starts_with(SESSION_ID))
+            .map(|str| &str[SESSION_ID.len()..])?;
 
         Some((client, session_id.to_string()))
     }
@@ -90,13 +94,25 @@ impl ClientOptions {
             panic!("no api-key has been set");
         }
         let (client, session_id) = Self::client_with_session_id().await.unwrap();
+
+        let mut dont_retry = self.dont_retry;
+
+        // TODO: Is it really a good idea to add this here? (NOIDONTTHINKSO)
+        // if !dont_retry.contains(&StatusCode::UNAUTHORIZED) {
+        //     dont_retry.push(StatusCode::UNAUTHORIZED);
+        // }
+
+        dont_retry.sort_unstable();
+        dont_retry.dedup();
+
         Client {
             retry_timeout: self.retry_timeout.unwrap_or(Duration::from_millis(1000)),
-            retries: self.retries.unwrap_or(3),
-            dont_retry: self.dont_retry,
+            max_retries: self.max_retries.unwrap_or(3),
+            dont_retry: dont_retry,
             session_id: session_id,
             api_keys: self.api_keys,
             client: client,
+            retries: AtomicUsize::new(0),
         }
     }
 }
@@ -107,12 +123,15 @@ impl Client {
         T: DeserializeOwned,
     {
         let mut retries = 0_usize;
-        loop {
+        let result = loop {
             let err = match self.client.get(url).query(query).send().await {
-                Ok(resp) => return Ok(resp.json().await?),
+                Ok(resp) => match resp.error_for_status() {
+                    Ok(resp) => break Ok(resp.json().await?),
+                    Err(err) => err,
+                },
                 Err(err) => err,
             };
-            if retries == self.retries {
+            if retries == self.max_retries {
                 break Err(err);
             }
             if let Some(status) = err.status() {
@@ -122,8 +141,11 @@ impl Client {
             }
             retries += 1;
             tokio::time::sleep(self.retry_timeout).await;
-            println!("retry({}): {}", retries, err);
+        };
+        if retries > 0 {
+            self.retries.fetch_add(retries, Ordering::Relaxed);
         }
+        result
     }
     pub fn api_key(&self) -> &str {
         self.api_keys[0].as_str()
@@ -131,13 +153,12 @@ impl Client {
     pub fn session_id(&self) -> &str {
         self.session_id.as_str()
     }
-}
-
-pub fn limiter(per_sec: u64) -> Interval {
-    let delay_ms = (1.0 / per_sec as f64) as u64;
-    let mut limiter = interval(Duration::from_millis(delay_ms));
-    limiter.set_missed_tick_behavior(MissedTickBehavior::Burst);
-    limiter
+    pub fn retries(&self) -> usize {
+        self.retries.load(Ordering::Relaxed)
+    }
+    pub fn reset_retries(&self) {
+        self.retries.store(0, Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]

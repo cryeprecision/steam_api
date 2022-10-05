@@ -226,10 +226,40 @@ pub async fn get_player_summaries(
     Ok(map)
 }
 
+impl crate::client::Client {
+    /// Get the summaries of the profiles with the given [SteamId]
+    ///
+    /// Uses [`PLAYER_SUMMARIES_API`]
+    pub async fn get_player_summaries(&self, steam_id_chunk: &[SteamId]) -> Result<SummaryMap> {
+        if steam_id_chunk.len() > PLAYER_SUMMARIES_IDS_PER_REQUEST {
+            return Err(PlayerSummaryError::TooManyIds);
+        }
+
+        let mut map = SummaryMap::with_capacity(steam_id_chunk.len());
+        for &id in steam_id_chunk {
+            if let Some(_) = map.insert(id, None) {
+                return Err(PlayerSummaryError::NonUniqueIds(id));
+            }
+        }
+
+        let ids = steam_id_chunk.iter().to_steam_id_string(",");
+        let query = [("key", self.api_key()), ("steamids", &ids)];
+        let resp = self
+            .get_json::<Response>(PLAYER_SUMMARIES_API, &query)
+            .await?;
+
+        for elem in resp.response.players.into_iter() {
+            let sum = PlayerSummary::parse_response(elem)?;
+            let _ = map.insert(sum.steam_id, Some(sum));
+        }
+
+        Ok(map)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::get_player_summaries;
-    use crate::steam_id::SteamId;
+    use crate::{steam_id::SteamId, ClientOptions};
     use futures::StreamExt;
 
     #[tokio::test]
@@ -254,11 +284,11 @@ mod tests {
         ];
 
         dotenv::dotenv().unwrap();
-        let client = reqwest::Client::new();
         let api_key = dotenv::var("STEAM_API_KEY").unwrap();
+        let client = ClientOptions::new().api_key(api_key).build().await;
 
         let mut stream = futures::stream::iter(ids.iter())
-            .map(|&chunk| get_player_summaries(&client, &api_key, &chunk))
+            .map(|&chunk| client.get_player_summaries(&chunk))
             .buffer_unordered(2);
 
         while let Some(res) = stream.next().await {

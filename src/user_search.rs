@@ -235,6 +235,20 @@ pub async fn get_search_page(
     UserSearchPage::parse_response(resp)
 }
 
+impl crate::client::Client {
+    /// Query [`USER_SEARCH_API`] for the name `query` and the page `page`
+    pub async fn get_search_page(&self, query: &str, page: usize) -> Result<UserSearchPage> {
+        let query = [
+            ("filter", "users"),
+            ("text", query),
+            ("sessionid", self.session_id()),
+            ("page", &page.to_string()),
+        ];
+        let resp = self.get_json::<Response>(USER_SEARCH_API, &query).await?;
+        UserSearchPage::parse_response(resp)
+    }
+}
+
 /// Create a [`Client`] with a [`CookieStore`] and send a request to [`USER_SEARCH_API`].
 ///
 /// This will set the cookies `sessionid` and `steamCountry`.
@@ -267,16 +281,20 @@ pub async fn client_with_session_id() -> Option<(Client, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{client_with_session_id, get_search_page};
+    use crate::ClientOptions;
+
     use futures::StreamExt;
 
     #[tokio::test]
     async fn it_works() {
-        let (client, session_id) = client_with_session_id().await.unwrap();
+        dotenv::dotenv().unwrap();
+        let api_key = dotenv::var("STEAM_API_KEY").unwrap();
+        let client = ClientOptions::new().api_key(api_key).build().await;
+
         let searches = std::iter::repeat("prog").zip(1..=148);
 
         let mut stream = futures::stream::iter(searches)
-            .map(|(query, page)| get_search_page(&client, &session_id, query, page))
+            .map(|(query, page)| client.get_search_page(query, page))
             .buffer_unordered(20);
 
         while let Some(res) = stream.next().await {

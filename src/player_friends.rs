@@ -108,11 +108,40 @@ pub async fn get_player_friends(
     Ok(Some(friends))
 }
 
+impl crate::client::Client {
+    /// Get the friends of the profile with the given [`SteamId`]
+    ///
+    /// Uses [`PLAYER_FRIENDS_API`]
+    pub async fn get_player_friends(&self, id: SteamId) -> Result<Option<FriendList>> {
+        let query = [
+            ("key", self.api_key()),
+            ("relationship", "friend"),
+            ("steamid", &id.to_string()),
+        ];
+
+        let resp = match self.get_json::<Response>(PLAYER_FRIENDS_API, &query).await {
+            Ok(resp) => resp,
+            Err(err) => match err.status() {
+                Some(StatusCode::UNAUTHORIZED) => return Ok(None),
+                _ => return Err(err.into()),
+            },
+        };
+
+        let mut friends = Vec::with_capacity(resp.friend_list.friends.len());
+        for friend in resp.friend_list.friends.into_iter() {
+            friends.push(Friend::parse_response(friend)?);
+        }
+
+        Ok(Some(friends))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::get_player_friends;
+    use crate::client::ClientOptions;
     use crate::steam_id::SteamId;
     use futures::{FutureExt, StreamExt};
+    use reqwest::StatusCode;
 
     #[tokio::test]
     async fn it_works() {
@@ -133,12 +162,16 @@ mod tests {
         ];
 
         dotenv::dotenv().unwrap();
-        let client = reqwest::Client::new();
         let api_key = dotenv::var("STEAM_API_KEY").unwrap();
+        let client = ClientOptions::new()
+            .api_key(api_key)
+            .dont_retry(StatusCode::UNAUTHORIZED)
+            .build()
+            .await;
 
         let mut stream = futures::stream::iter(ids.iter())
-            .map(|&id| get_player_friends(&client, &api_key, id).map(move |r| (id, r)))
-            .buffer_unordered(2);
+            .map(|&id| client.get_player_friends(id).map(move |r| (id, r)))
+            .buffer_unordered(100);
 
         while let Some((id, res)) = stream.next().await {
             let res = match res {
@@ -156,5 +189,6 @@ mod tests {
             };
             println!("[{}] {} friends", id, res.len());
         }
+        println!("Retries: {}", client.retries());
     }
 }
