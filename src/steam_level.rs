@@ -23,7 +23,7 @@ struct ResponseInner {
 }
 
 impl Client {
-    /// Get the Steam level of the given [SteamId]
+    /// Get the Steam level of the given [`SteamId`]
     ///
     /// Uses [`PLAYER_STEAM_LEVEL_API`]
     pub async fn get_player_steam_level(&self, id: SteamId) -> Result<Option<usize>> {

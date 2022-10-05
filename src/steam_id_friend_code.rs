@@ -7,7 +7,7 @@ struct U32Pair(u32, u32);
 
 impl From<U32Pair> for u64 {
     fn from(U32Pair(low, high): U32Pair) -> Self {
-        ((high as u64) << 32) | (low as u64)
+        (u64::from(high) << 32) | u64::from(low)
     }
 }
 impl From<u64> for U32Pair {
@@ -49,24 +49,24 @@ fn base32_encode(num: u64) -> String {
 }
 
 impl SteamId {
-    fn hash(&self) -> u32 {
+    fn hash(self) -> u32 {
         let acc_nr = self.acc_nr() as u32;
-        let strange = acc_nr as u64 | 0x4353474F00000000;
+        let strange = acc_nr as u64 | 0x4353_474F_0000_0000;
         let digest = md5::compute(strange.to_le_bytes());
         LittleEndian::read_u32(&digest.0)
     }
-    pub fn to_friend_code(&self) -> String {
+    pub fn to_friend_code(self) -> String {
         let hash = self.hash();
         let mut r = 0u64;
         let mut chunks = ChunksU4(self.0);
         for i in 0..8 {
-            let a = (r << 4) as u32 | chunks.next().unwrap_or(0) as u32;
+            let a = (r << 4) as u32 | u32::from(chunks.next().unwrap_or(0));
             r = u64::from(U32Pair(a, (r >> 28) as u32));
             r = u64::from(U32Pair((a << 1) | ((hash >> i) & 1), (r >> 31) as u32));
         }
         let mut enc = base32_encode(r);
         if enc.starts_with("AAAA-") {
-            let _ = enc.drain(0.."AAAA-".len());
+            enc.drain(0.."AAAA-".len());
         };
         enc
     }

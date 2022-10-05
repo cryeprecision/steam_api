@@ -101,7 +101,7 @@ impl std::fmt::Display for PlayerBan {
 }
 
 impl Client {
-    /// Get the bans of the profiles with the given [SteamId]
+    /// Get the bans of the profiles with the given [`SteamId`]
     ///
     /// Uses [`PLAYER_BANS_API`]
     pub async fn get_player_bans(&self, steam_id_chunk: &[SteamId]) -> Result<BanMap> {
@@ -121,9 +121,9 @@ impl Client {
 
         let resp = self.get_json::<Response>(PLAYER_BANS_API, &query).await?;
 
-        for elem in resp.players.into_iter() {
+        for elem in resp.players {
             let ban = PlayerBan::parse_response(elem)?;
-            let _ = map.insert(ban.steam_id, Some(ban));
+            map.insert(ban.steam_id, Some(ban));
         }
 
         Ok(map)

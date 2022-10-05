@@ -29,6 +29,7 @@ impl Default for ClientOptions {
 }
 
 impl ClientOptions {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             retry_timeout: None,
@@ -37,29 +38,36 @@ impl ClientOptions {
             dont_retry: Vec::new(),
         }
     }
+    #[must_use]
     pub fn retry_timeout(mut self, dur: Duration) -> Self {
         self.retry_timeout = Some(dur);
         self
     }
+    #[must_use]
     pub fn retry_timeout_ms(self, ms: u64) -> Self {
         self.retry_timeout(Duration::from_millis(ms))
     }
+    #[must_use]
     pub fn retries(mut self, retries: usize) -> Self {
         self.max_retries = Some(retries);
         self
     }
+    #[must_use]
     pub fn api_key(mut self, key: String) -> Self {
         self.api_keys.push(key);
         self
     }
+    #[must_use]
     pub fn api_keys(mut self, keys: Vec<String>) -> Self {
         self.api_keys.extend(keys);
         self
     }
+    #[must_use]
     pub fn dont_retry(mut self, code: StatusCode) -> Self {
         self.dont_retry.push(code);
         self
     }
+    #[must_use]
     pub fn dont_retries(mut self, codes: Vec<StatusCode>) -> Self {
         self.dont_retry.extend(codes);
         self
@@ -82,7 +90,7 @@ impl ClientOptions {
         let resp = client.get(USER_SEARCH_API).send().await.ok()?;
         if resp.status() != StatusCode::UNAUTHORIZED {
             // Every status-code other than 401 should be an error
-            let _ = resp.error_for_status().ok()?;
+            resp.error_for_status().ok()?;
         }
 
         let cookies = jar.cookies(&url)?;
@@ -95,10 +103,11 @@ impl ClientOptions {
 
         Some((client, session_id.to_string()))
     }
+    /// # Panics
+    /// Panics, if no api-key has been set.
     pub async fn build(self) -> Client {
-        if self.api_keys.is_empty() {
-            panic!("no api-key has been set");
-        }
+        assert!(!self.api_keys.is_empty(), "no api-key has been set");
+
         let (client, session_id) = Self::client_with_session_id().await.unwrap();
 
         let mut dont_retry = self.dont_retry;

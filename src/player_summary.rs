@@ -109,7 +109,7 @@ pub struct PlayerSummary {
     pub local_country_code: Option<String>,
 }
 
-/// If a given [SteamId] does not exist anymore,
+/// If a given [`SteamId`] does not exist anymore,
 /// its corresponding entry will be `None`
 pub type SummaryMap = HashMap<SteamId, Option<PlayerSummary>>;
 
@@ -185,7 +185,7 @@ impl std::fmt::Display for PlayerSummary {
 }
 
 impl Client {
-    /// Get the summaries of the profiles with the given [SteamId]
+    /// Get the summaries of the profiles with the given [`SteamId`]
     ///
     /// Uses [`PLAYER_SUMMARIES_API`]
     pub async fn get_player_summaries(&self, steam_id_chunk: &[SteamId]) -> Result<SummaryMap> {
@@ -206,9 +206,9 @@ impl Client {
             .get_json::<Response>(PLAYER_SUMMARIES_API, &query)
             .await?;
 
-        for elem in resp.response.players.into_iter() {
+        for elem in resp.response.players {
             let sum = PlayerSummary::parse_response(elem)?;
-            let _ = map.insert(sum.steam_id, Some(sum));
+            map.insert(sum.steam_id, Some(sum));
         }
 
         Ok(map)

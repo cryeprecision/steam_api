@@ -199,8 +199,8 @@ impl Parser {
         }
 
         Ok(UserSearchEntry {
-            profile_url,
             persona_name,
+            profile_url,
             avatar_full,
             aliases,
         })

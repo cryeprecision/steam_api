@@ -85,7 +85,7 @@ impl Client {
         };
 
         let mut friends = Vec::with_capacity(resp.friend_list.friends.len());
-        for friend in resp.friend_list.friends.into_iter() {
+        for friend in resp.friend_list.friends {
             friends.push(Friend::parse_response(friend)?);
         }
 

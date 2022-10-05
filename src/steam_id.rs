@@ -170,8 +170,7 @@ impl AccountType {
             AccountType::Pending => Some('P'),
             AccountType::ContentServer => Some('C'),
             AccountType::Clan => Some('g'),
-            AccountType::Chat => None,
-            AccountType::SuperSeeder => None,
+            AccountType::Chat | AccountType::SuperSeeder => None,
             AccountType::AnonUser => Some('a'),
         }
     }

@@ -35,7 +35,7 @@ impl ParseResponse<Response> for Option<SteamId> {
             None => return Ok(None),
         };
         match SteamId::from_str(&id) {
-            Err(_) => Err(VanityUrlError::InvalidSteamId(id.to_owned())),
+            Err(_) => Err(VanityUrlError::InvalidSteamId(id)),
             Ok(id) => Ok(Some(id)),
         }
     }
