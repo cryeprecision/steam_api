@@ -123,7 +123,7 @@ impl ParseResponse<Response> for UserSearchPage {
             total_result_count: value.search_result_count,
             search_filter: value.search_filter,
             search_page: search_page as usize,
-            results: results,
+            results,
         })
     }
 }
@@ -180,7 +180,7 @@ impl Parser {
                 None => return Err(ParseError::NoProfileAvatar),
             };
             let mut avatar_medium = match image.value().attr("src") {
-                Some(avatar) => (&avatar[..avatar.len() - AVATAR_MEDIUM_SUFFIX.len()]).to_owned(),
+                Some(avatar) => (avatar[..avatar.len() - AVATAR_MEDIUM_SUFFIX.len()]).to_owned(),
                 None => return Err(ParseError::NoProfileAvatar),
             };
             avatar_medium.push_str(AVATAR_FULL_SUFFIX);

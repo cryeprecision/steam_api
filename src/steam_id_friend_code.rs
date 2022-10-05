@@ -1,8 +1,6 @@
 use crate::bit_chunks::{BitChunks, ChunksU4, ChunksU5};
 use crate::steam_id::SteamId;
 
-use std::fmt;
-
 use byteorder::{ByteOrder, LittleEndian};
 
 struct U32Pair(u32, u32);
@@ -20,20 +18,20 @@ impl From<u64> for U32Pair {
 
 fn to_symbol(index: u8) -> Option<char> {
     match index {
-        0..=7 => Some(('A' as u8 + index) as char),      // [A, H]
-        8..=12 => Some(('A' as u8 + index + 1) as char), // [J, N]
-        13..=23 => Some(('A' as u8 + index + 2) as char), // [P, Z]
-        24..=31 => Some(('2' as u8 + index - 24) as char), // [2, 9]
+        0..=7 => Some((b'A' + index) as char),        // [A, H]
+        8..=12 => Some((b'A' + index + 1) as char),   // [J, N]
+        13..=23 => Some((b'A' + index + 2) as char),  // [P, Z]
+        24..=31 => Some((b'2' + index - 24) as char), // [2, 9]
         _ => None,
     }
 }
 
 fn _from_symbol(sym: char) -> Option<u8> {
     match sym {
-        'A'..='H' => Some(sym as u8 - 'A' as u8),      // [0, 7]
-        'J'..='N' => Some(sym as u8 - 'A' as u8 - 1),  // [8, 12]
-        'P'..='Z' => Some(sym as u8 - 'A' as u8 - 2),  // [13, 23]
-        '2'..='9' => Some(sym as u8 - '2' as u8 + 24), // [24, 31]
+        'A'..='H' => Some(sym as u8 - b'A'),      // [0, 7]
+        'J'..='N' => Some(sym as u8 - b'A' - 1),  // [8, 12]
+        'P'..='Z' => Some(sym as u8 - b'A' - 2),  // [13, 23]
+        '2'..='9' => Some(sym as u8 - b'2' + 24), // [24, 31]
         _ => None,
     }
 }
@@ -54,7 +52,7 @@ impl SteamId {
     fn hash(&self) -> u32 {
         let acc_nr = self.acc_nr() as u32;
         let strange = acc_nr as u64 | 0x4353474F00000000;
-        let digest = md5::compute(&strange.to_le_bytes());
+        let digest = md5::compute(strange.to_le_bytes());
         LittleEndian::read_u32(&digest.0)
     }
     pub fn to_friend_code(&self) -> String {
