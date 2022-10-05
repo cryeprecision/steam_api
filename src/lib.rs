@@ -27,6 +27,8 @@ pub use enums::*;
 mod client;
 pub use client::*;
 
+mod rate_limit;
+
 mod steam_id;
 pub use steam_id::*;
 
