@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 /// [`/ISteamUser/ResolveVanityURL/v1/`](https://partner.steamgames.com/doc/webapi/ISteamUser#:~:text=/ISteamUser/ResolveVanityURL/v1/)
 pub const VANITY_API: &str = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/";
 pub const VANITY_CONCURRENT_REQUESTS: usize = 100;
@@ -36,8 +34,3 @@ pub const USER_SEARCH_MAX_RESULTS: usize = USER_SEARCH_MAX_PAGES * USER_SEARCH_R
 
 pub const PROFILE_URL_FIXED_PREFIX: &str = "https://steamcommunity.com/profiles/";
 pub const PROFILE_URL_VANITY_PREFIX: &str = "https://steamcommunity.com/id/";
-
-/// How often we retry an endpoint in case of an error
-pub const RETRIES: usize = 5;
-/// How long we wait between each attempt while retrying
-pub const WAIT_DURATION: Duration = Duration::from_millis(250);

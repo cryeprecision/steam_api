@@ -1,9 +1,7 @@
+use crate::client::Client;
 use crate::constants::PLAYER_STEAM_LEVEL_API;
-use crate::constants::{RETRIES, WAIT_DURATION};
-use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 
-use reqwest::Client;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -24,31 +22,10 @@ struct ResponseInner {
     player_level: Option<usize>,
 }
 
-/// Get the Steam-level of the profile with the given [`SteamId`]
-///
-/// Uses [`PLAYER_STEAM_LEVEL_API`]
-pub async fn get_player_steam_level(
-    client: &Client,
-    api_key: &str,
-    id: SteamId,
-) -> Result<Option<usize>> {
-    let query = [("key", api_key), ("steamid", &id.to_string())];
-
-    let resp = send_request_with_reties::<Response>(
-        client,
-        PLAYER_STEAM_LEVEL_API,
-        &query,
-        true,
-        true,
-        RETRIES,
-        WAIT_DURATION,
-    )
-    .await?;
-
-    Ok(resp.response.player_level)
-}
-
-impl crate::client::Client {
+impl Client {
+    /// Get the Steam level of the given [SteamId]
+    ///
+    /// Uses [`PLAYER_STEAM_LEVEL_API`]
     pub async fn get_player_steam_level(&self, id: SteamId) -> Result<Option<usize>> {
         let query = [("key", self.api_key()), ("steamid", &id.to_string())];
         let resp = self
@@ -60,12 +37,10 @@ impl crate::client::Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::rate_limit::rate_limit;
     use crate::steam_id::SteamId;
-    use crate::{Client, ClientOptions};
+    use crate::ClientOptions;
+
     use futures::{FutureExt, StreamExt};
-    use indicatif::{MultiProgress, ProgressBar};
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn it_works() {
@@ -94,34 +69,18 @@ mod tests {
             .build()
             .await;
 
-        const COUNT: usize = 2000;
-        const PARALLEL: usize = 10;
-        const PER_SEC: u64 = 100;
+        let mut stream = futures::stream::iter(ids.iter())
+            .map(|&id| client.get_player_steam_level(id).map(move |r| (id, r)))
+            .buffer_unordered(2);
 
-        let bars = MultiProgress::new();
-        let bar_recv = bars.add(ProgressBar::new(COUNT as u64));
-        let bar_diff = bars.add(ProgressBar::new(10));
-
-        let mut stream = futures::stream::iter(ids.iter().cycle().take(2000))
-            .map(|&id| {
-                bar_diff.inc(1);
-                client.get_player_steam_level(id).map(move |r| (id, r))
-            })
-            .buffer_unordered(PARALLEL);
-
-        let mut buffer = Vec::with_capacity(COUNT);
+        let mut buffer = Vec::new();
         while let Some((id, lvl)) = stream.next().await {
-            bar_diff.set_position(bar_diff.position().saturating_sub(1));
-            bar_recv.inc(1);
             buffer.push((id, lvl.unwrap()));
         }
 
-        bar_diff.abandon();
-        bar_recv.abandon();
-
         buffer.sort_by_key(|(_, lvl)| std::cmp::Reverse(*lvl));
 
-        for (id, lvl) in buffer.iter().take(20) {
+        for (id, lvl) in buffer.iter() {
             println!("{}: {:?}", id, lvl);
         }
     }

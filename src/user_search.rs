@@ -1,14 +1,11 @@
+use crate::client::Client;
 use crate::constants::USER_SEARCH_API;
 use crate::parse_response::ParseResponse;
-use crate::request_helper::send_request;
 use crate::steam_id::SteamId;
 
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
 
-use reqwest::cookie::{CookieStore, Jar};
-use reqwest::{Client, StatusCode, Url};
 use scraper::{ElementRef, Html, Selector};
 use serde::Deserialize;
 use thiserror::Error;
@@ -217,25 +214,7 @@ impl Parser {
     }
 }
 
-/// Query [`USER_SEARCH_API`] for the name `query` and the page `page`
-pub async fn get_search_page(
-    client: &Client,
-    session_id: &str,
-    query: &str,
-    page: usize,
-) -> Result<UserSearchPage> {
-    let headers = [
-        ("filter", "users"),
-        ("text", query),
-        ("sessionid", session_id),
-        ("page", &page.to_string()),
-    ];
-    let req = client.get(USER_SEARCH_API).query(&headers);
-    let resp = send_request::<Response>(req, true, true).await?;
-    UserSearchPage::parse_response(resp)
-}
-
-impl crate::client::Client {
+impl Client {
     /// Query [`USER_SEARCH_API`] for the name `query` and the page `page`
     pub async fn get_search_page(&self, query: &str, page: usize) -> Result<UserSearchPage> {
         let query = [
@@ -247,36 +226,6 @@ impl crate::client::Client {
         let resp = self.get_json::<Response>(USER_SEARCH_API, &query).await?;
         UserSearchPage::parse_response(resp)
     }
-}
-
-/// Create a [`Client`] with a [`CookieStore`] and send a request to [`USER_SEARCH_API`].
-///
-/// This will set the cookies `sessionid` and `steamCountry`.
-///
-/// The request will return a 401 status-code which is expected.
-pub async fn client_with_session_id() -> Option<(Client, String)> {
-    // SAFETY: I'm pretty sure this is a valid URL :^)
-    let url = Url::from_str("https://steamcommunity.com/").ok()?;
-
-    let jar = Arc::new(Jar::default());
-    let builder = Client::builder().cookie_provider(Arc::clone(&jar));
-    let client = builder.build().ok()?;
-
-    let resp = client.get(USER_SEARCH_API).send().await.ok()?;
-    if resp.status() != StatusCode::UNAUTHORIZED {
-        // Every status-code other than 401 should be an error
-        let _ = resp.error_for_status().ok()?;
-    }
-
-    let cookies = jar.cookies(&url)?;
-    let cookie_str = cookies.to_str().ok()?;
-
-    let session_id = cookie_str
-        .split("; ")
-        .find(|&str| str.starts_with("sessionid="))?;
-    let session_id = session_id.split_once('=')?.1.to_owned();
-
-    Some((client, session_id))
 }
 
 #[cfg(test)]

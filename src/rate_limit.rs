@@ -35,6 +35,12 @@ where
     })
 }
 
+impl<I: Unpin> RateLimitIter<I> {
+    pub fn set_missed_tick_behavior(&mut self, opt: MissedTickBehavior) {
+        self.timer.set_missed_tick_behavior(opt);
+    }
+}
+
 impl<I> Stream for RateLimitIter<I>
 where
     I: Iterator + Unpin,

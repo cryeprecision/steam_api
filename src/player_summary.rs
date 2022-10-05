@@ -1,8 +1,7 @@
+use crate::client::Client;
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
-use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::enums::{CommunityVisibilityState, PersonaState};
 use crate::parse_response::ParseResponse;
-use crate::request_helper::send_request_with_reties;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
@@ -57,7 +56,6 @@ struct ResponseInnerElement {
     persona_name: String,
     #[serde(rename = "profileurl")]
     profile_url: String,
-    #[serde(rename = "avatar")]
     avatar: String,
     #[serde(rename = "avatarmedium")]
     avatar_medium: String,
@@ -186,47 +184,7 @@ impl std::fmt::Display for PlayerSummary {
     }
 }
 
-/// Get the summaries of the profiles with the given [SteamId]
-///
-/// Uses [`PLAYER_SUMMARIES_API`]
-pub async fn get_player_summaries(
-    client: &reqwest::Client,
-    api_key: &str,
-    steam_id_chunk: &[SteamId],
-) -> Result<SummaryMap> {
-    if steam_id_chunk.len() > PLAYER_SUMMARIES_IDS_PER_REQUEST {
-        return Err(PlayerSummaryError::TooManyIds);
-    }
-
-    let mut map = SummaryMap::with_capacity(steam_id_chunk.len());
-    for &id in steam_id_chunk {
-        if let Some(_) = map.insert(id, None) {
-            return Err(PlayerSummaryError::NonUniqueIds(id));
-        }
-    }
-
-    let ids = steam_id_chunk.iter().to_steam_id_string(",");
-    let query = [("key", api_key), ("steamids", &ids)];
-    let resp = send_request_with_reties::<Response>(
-        client,
-        PLAYER_SUMMARIES_API,
-        &query,
-        true,
-        true,
-        RETRIES,
-        WAIT_DURATION,
-    )
-    .await?;
-
-    for elem in resp.response.players.into_iter() {
-        let sum = PlayerSummary::parse_response(elem)?;
-        let _ = map.insert(sum.steam_id, Some(sum));
-    }
-
-    Ok(map)
-}
-
-impl crate::client::Client {
+impl Client {
     /// Get the summaries of the profiles with the given [SteamId]
     ///
     /// Uses [`PLAYER_SUMMARIES_API`]

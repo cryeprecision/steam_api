@@ -1,16 +1,13 @@
+use crate::client::Client;
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
-use crate::constants::{RETRIES, WAIT_DURATION};
+use crate::enums::EconomyBan;
 use crate::parse_response::ParseResponse;
-use crate::request_helper::send_request_with_reties;
-use crate::steam_id::{self, SteamId};
+use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
-use crate::EconomyBan;
 
 use std::collections::HashMap;
-use std::iter::repeat;
 use std::str::FromStr;
 
-use reqwest::Client;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -103,47 +100,7 @@ impl std::fmt::Display for PlayerBan {
     }
 }
 
-/// Get the bans of the profiles with the given [SteamId]
-///
-/// Uses [`PLAYER_BANS_API`]
-pub async fn get_player_bans(
-    client: &Client,
-    api_key: &str,
-    steam_id_chunk: &[SteamId],
-) -> Result<BanMap> {
-    if steam_id_chunk.len() > PLAYER_BANS_IDS_PER_REQUEST {
-        return Err(PlayerBanError::TooManyIds);
-    }
-
-    let mut map = BanMap::with_capacity(steam_id_chunk.len());
-    for &id in steam_id_chunk {
-        if let Some(_) = map.insert(id, None) {
-            return Err(PlayerBanError::NonUniqueIds(id));
-        }
-    }
-
-    let ids = steam_id_chunk.iter().to_steam_id_string(",");
-    let query = [("key", api_key), ("steamids", &ids)];
-    let resp = send_request_with_reties::<Response>(
-        client,
-        PLAYER_BANS_API,
-        &query,
-        true,
-        true,
-        RETRIES,
-        WAIT_DURATION,
-    )
-    .await?;
-
-    for elem in resp.players.into_iter() {
-        let ban = PlayerBan::parse_response(elem)?;
-        let _ = map.insert(ban.steam_id, Some(ban));
-    }
-
-    Ok(map)
-}
-
-impl crate::client::Client {
+impl Client {
     /// Get the bans of the profiles with the given [SteamId]
     ///
     /// Uses [`PLAYER_BANS_API`]

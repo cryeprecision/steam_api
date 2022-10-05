@@ -18,7 +18,6 @@
 #![feature(generic_arg_infer)]
 
 pub mod constants;
-mod request_helper;
 
 mod enums;
 
@@ -27,7 +26,7 @@ pub use enums::*;
 mod client;
 pub use client::*;
 
-mod rate_limit;
+pub mod rate_limit;
 
 mod steam_id;
 pub use steam_id::*;

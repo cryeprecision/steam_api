@@ -1,15 +1,14 @@
+use crate::client::Client;
 use crate::constants::PLAYER_FRIENDS_API;
-use crate::constants::{RETRIES, WAIT_DURATION};
 use crate::parse_response::ParseResponse;
 use crate::steam_id::SteamId;
 
 use std::str::FromStr;
 
 use chrono::{DateTime, Local, TimeZone, Utc};
-use reqwest::{Client, StatusCode};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::time::sleep;
 
 #[derive(Error, Debug)]
 pub enum PlayerFriendsError {
@@ -66,49 +65,7 @@ impl ParseResponse<ResponseInnerElement> for Friend {
     }
 }
 
-/// Get the friends of the profile with the given [`SteamId`]
-///
-/// Uses [`PLAYER_FRIENDS_API`]
-pub async fn get_player_friends(
-    client: &Client,
-    api_key: &str,
-    id: SteamId,
-) -> Result<Option<FriendList>> {
-    let query = [
-        ("key", api_key),
-        ("relationship", "friend"),
-        ("steamid", &id.to_string()),
-    ];
-
-    let mut retries = 0_usize;
-    let resp = loop {
-        let req = client.get(PLAYER_FRIENDS_API).query(&query);
-        let resp = req.send().await?;
-
-        // This means the profile has been deleted or friends are private
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            return Ok(None);
-        }
-        let err = match resp.error_for_status() {
-            Ok(resp) => break resp.json::<Response>().await?,
-            Err(err) => err,
-        };
-        if retries >= RETRIES {
-            return Err(err.into());
-        }
-        retries += 1;
-        sleep(WAIT_DURATION).await;
-    };
-
-    let mut friends = Vec::with_capacity(resp.friend_list.friends.len());
-    for friend in resp.friend_list.friends.into_iter() {
-        friends.push(Friend::parse_response(friend)?);
-    }
-
-    Ok(Some(friends))
-}
-
-impl crate::client::Client {
+impl Client {
     /// Get the friends of the profile with the given [`SteamId`]
     ///
     /// Uses [`PLAYER_FRIENDS_API`]
