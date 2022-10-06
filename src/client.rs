@@ -86,6 +86,7 @@ impl ClientOptions {
     #[must_use]
     pub fn no_cookie_store(mut self) -> Self {
         self.cookie_store = false;
+        self.get_session_id = false;
         self
     }
     #[must_use]
