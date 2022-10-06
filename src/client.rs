@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::cookie::Jar;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
@@ -20,6 +22,8 @@ pub struct ClientOptions {
     max_retries: Option<usize>,
     api_keys: Vec<String>,
     dont_retry: Vec<StatusCode>,
+    cookie_store: bool,
+    get_session_id: bool,
 }
 
 impl Default for ClientOptions {
@@ -36,6 +40,8 @@ impl ClientOptions {
             max_retries: None,
             api_keys: Vec::new(),
             dont_retry: Vec::new(),
+            cookie_store: true,
+            get_session_id: true,
         }
     }
     #[must_use]
@@ -72,20 +78,37 @@ impl ClientOptions {
         self.dont_retry.extend(codes);
         self
     }
-    async fn client_with_session_id() -> Option<(reqwest::Client, String)> {
-        use crate::constants::USER_SEARCH_API;
-        use reqwest::cookie::{CookieStore, Jar};
-        use reqwest::Url;
-        use std::str::FromStr;
-        use std::sync::Arc;
-
-        const SESSION_ID: &str = "sessionid=";
-
-        let url = Url::from_str("https://steamcommunity.com/").ok()?;
-
+    #[must_use]
+    pub fn dont_retry_unauthorized(mut self) -> Self {
+        self.dont_retry.push(StatusCode::UNAUTHORIZED);
+        self
+    }
+    #[must_use]
+    pub fn no_cookie_store(mut self) -> Self {
+        self.cookie_store = false;
+        self
+    }
+    #[must_use]
+    pub fn no_session_id(mut self) -> Self {
+        self.get_session_id = false;
+        self
+    }
+    fn client_with_cookie_store() -> Option<(reqwest::Client, Arc<Jar>)> {
         let jar = Arc::new(Jar::default());
         let builder = reqwest::Client::builder().cookie_provider(Arc::clone(&jar));
         let client = builder.build().ok()?;
+        Some((client, jar))
+    }
+    async fn client_with_session_id() -> Option<(reqwest::Client, String)> {
+        use crate::constants::USER_SEARCH_API;
+        use reqwest::cookie::CookieStore;
+        use reqwest::Url;
+        use std::str::FromStr;
+
+        const SESSION_ID: &str = "sessionid=";
+        let url = Url::from_str("https://steamcommunity.com/").ok()?;
+
+        let (client, jar) = Self::client_with_cookie_store()?;
 
         let resp = client.get(USER_SEARCH_API).send().await.ok()?;
         if resp.status() != StatusCode::UNAUTHORIZED {
@@ -103,12 +126,26 @@ impl ClientOptions {
 
         Some((client, session_id.to_string()))
     }
+
     /// # Panics
-    /// Panics, if no api-key has been set.
+    /// - If no api-key has been set
+    /// - If session_id but no cookie_store
     pub async fn build(self) -> Client {
         assert!(!self.api_keys.is_empty(), "no api-key has been set");
+        assert!(
+            !(self.get_session_id && !self.cookie_store),
+            "must enable cookie store to get session_id"
+        );
 
-        let (client, session_id) = Self::client_with_session_id().await.unwrap();
+        let (client, session_id) = if self.cookie_store && self.get_session_id {
+            Self::client_with_session_id().await.unwrap()
+        } else {
+            let client = reqwest::Client::builder()
+                .cookie_store(self.cookie_store)
+                .build()
+                .unwrap();
+            (client, String::new())
+        };
 
         let mut dont_retry = self.dont_retry;
 
