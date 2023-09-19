@@ -41,8 +41,11 @@ pub enum PlayerSummaryError {
     /// The response contained an invalid [SteamId]
     #[error("invalid steam-id: `{0}`")]
     InvalidSteamId(String),
+
+    #[error("invalid timestamp: `{0}`")]
+    InvalidTimestamp(i64),
 }
-pub type Result<T> = std::result::Result<T, PlayerSummaryError>;
+type Result<T> = std::result::Result<T, PlayerSummaryError>;
 
 #[derive(Deserialize, Debug, Default, Clone)]
 struct ResponseInnerElement {
@@ -64,7 +67,7 @@ struct ResponseInnerElement {
     #[serde(rename = "avatarhash")]
     avatar_hash: String,
     #[serde(rename = "lastlogoff")]
-    last_logoff: Option<u64>,
+    last_logoff: Option<i64>,
     #[serde(rename = "personastate")]
     persona_state: i32,
     #[serde(rename = "realname")]
@@ -72,7 +75,7 @@ struct ResponseInnerElement {
     #[serde(rename = "primaryclanid")]
     primary_clan_id: Option<String>,
     #[serde(rename = "timecreated")]
-    time_created: Option<u64>,
+    time_created: Option<i64>,
     #[serde(rename = "personastateflags")]
     persona_state_flags: Option<u32>,
     #[serde(rename = "loccountrycode")]
@@ -116,14 +119,24 @@ pub type SummaryMap = HashMap<SteamId, Option<PlayerSummary>>;
 impl ParseResponse<ResponseInnerElement> for PlayerSummary {
     type Error = PlayerSummaryError;
     fn parse_response(value: ResponseInnerElement) -> Result<Self> {
-        let last_logoff = value
-            .last_logoff
-            .map(|unix| Utc.timestamp(unix as i64, 0))
-            .map(DateTime::<Local>::from);
-        let time_created = value
-            .time_created
-            .map(|unix| Utc.timestamp(unix as i64, 0))
-            .map(DateTime::<Local>::from);
+        let last_logoff = match value.last_logoff {
+            Some(unix) => Some(
+                Utc.timestamp_opt(unix, 0)
+                    .single()
+                    .ok_or(PlayerSummaryError::InvalidTimestamp(unix))?
+                    .with_timezone(&Local),
+            ),
+            None => None,
+        };
+        let time_created = match value.time_created {
+            Some(unix) => Some(
+                Utc.timestamp_opt(unix, 0)
+                    .single()
+                    .ok_or(PlayerSummaryError::InvalidTimestamp(unix))?
+                    .with_timezone(&Local),
+            ),
+            None => None,
+        };
 
         let vis_state = CommunityVisibilityState::new(value.community_visibility_state).ok_or(
             PlayerSummaryError::InvalidCommunityVisibilityState(value.community_visibility_state),

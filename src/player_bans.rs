@@ -29,7 +29,7 @@ pub enum PlayerBanError {
     #[error("invalid steam-id: `{0}`")]
     InvalidSteamId(String),
 }
-pub type Result<T> = std::result::Result<T, PlayerBanError>;
+type Result<T> = std::result::Result<T, PlayerBanError>;
 
 #[derive(Deserialize, Debug)]
 struct ResponseElement {

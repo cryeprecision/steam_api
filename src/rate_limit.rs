@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures::stream::Stream;
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
-fn assert_stream<T, S>(stream: S) -> S
+const fn assert_stream<T, S>(stream: S) -> S
 where
     S: Stream<Item = T>,
 {
@@ -63,32 +63,46 @@ where
 mod tests {
     use super::rate_limit;
     use futures::StreamExt;
-    use std::time::Duration;
-    use tokio::time::sleep;
 
-    async fn test(i: usize) -> usize {
-        println!("{:03} ->", i);
-        sleep(Duration::from_millis(5000)).await;
-        i
+    macro_rules! assert_elapsed_ms {
+        ($now:ident, $ms_min:literal, $ms_max:literal) => {
+            #[allow(unused_comparisons)]
+            {
+                let elapsed = $now.elapsed().as_millis();
+                assert!(
+                    elapsed >= $ms_min,
+                    "rate limit ticked too fast ({}ms < {}ms)",
+                    elapsed,
+                    $ms_min
+                );
+                assert!(
+                    elapsed <= $ms_max,
+                    "rate limit ticked too slow ({}ms > {}ms)",
+                    elapsed,
+                    $ms_max
+                );
+            }
+        };
     }
 
     #[tokio::test]
     async fn it_works() {
-        let mut stream = futures::stream::iter(0..40)
-            .map(|i| test(i))
-            .buffer_unordered(10);
+        let now = std::time::Instant::now();
+        let mut count = rate_limit(0..4, 4);
 
-        while let Some(i) = stream.next().await {
-            println!("<- {:03}", i);
-        }
-    }
+        let _ = count.next().await;
+        assert_elapsed_ms!(now, 0, 10);
 
-    #[tokio::test]
-    async fn it_limits() {
-        let mut stream = rate_limit(0..40, 10).map(|i| test(i)).buffer_unordered(5);
+        let _ = count.next().await;
+        assert_elapsed_ms!(now, 240, 260);
 
-        while let Some(i) = stream.next().await {
-            println!("<- {:03}", i);
-        }
+        let _ = count.next().await;
+        assert_elapsed_ms!(now, 490, 510);
+
+        let _ = count.next().await;
+        assert_elapsed_ms!(now, 740, 760);
+
+        assert!(count.next().await.is_none());
+        assert_elapsed_ms!(now, 990, 1010);
     }
 }

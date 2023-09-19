@@ -18,8 +18,11 @@ pub enum PlayerFriendsError {
     /// The result contained an invalid [SteamId]
     #[error("invalid steam-id: `{0}`")]
     InvalidSteamId(String),
+
+    #[error("invalid timestamp: `{0}`")]
+    InvalidTimestamp(i64),
 }
-pub type Result<T> = std::result::Result<T, PlayerFriendsError>;
+type Result<T> = std::result::Result<T, PlayerFriendsError>;
 
 #[derive(Deserialize, Debug)]
 struct ResponseInnerElement {
@@ -28,7 +31,7 @@ struct ResponseInnerElement {
     #[serde(rename = "relationship")]
     _relationship: String,
     #[serde(rename = "friend_since")]
-    friends_since: u64,
+    friends_since: i64,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -56,7 +59,12 @@ impl ParseResponse<ResponseInnerElement> for Friend {
     fn parse_response(value: ResponseInnerElement) -> Result<Self> {
         let id = SteamId::from_str(&value.steam_id)
             .map_err(|_| PlayerFriendsError::InvalidSteamId(value.steam_id))?;
-        let time = DateTime::<Local>::from(Utc.timestamp(value.friends_since as i64, 0));
+
+        let time = DateTime::<Local>::from(
+            Utc.timestamp_opt(value.friends_since, 0)
+                .single()
+                .ok_or(PlayerFriendsError::InvalidTimestamp(value.friends_since))?,
+        );
 
         Ok(Self {
             steam_id: id,

@@ -45,7 +45,7 @@ impl ClientOptions {
         }
     }
     #[must_use]
-    pub fn retry_timeout(mut self, dur: Duration) -> Self {
+    pub const fn retry_timeout(mut self, dur: Duration) -> Self {
         self.retry_timeout = Some(dur);
         self
     }
@@ -54,7 +54,7 @@ impl ClientOptions {
         self.retry_timeout(Duration::from_millis(ms))
     }
     #[must_use]
-    pub fn retries(mut self, retries: usize) -> Self {
+    pub const fn retries(mut self, retries: usize) -> Self {
         self.max_retries = Some(retries);
         self
     }
@@ -84,13 +84,13 @@ impl ClientOptions {
         self
     }
     #[must_use]
-    pub fn no_cookie_store(mut self) -> Self {
+    pub const fn no_cookie_store(mut self) -> Self {
         self.cookie_store = false;
         self.get_session_id = false;
         self
     }
     #[must_use]
-    pub fn no_session_id(mut self) -> Self {
+    pub const fn no_session_id(mut self) -> Self {
         self.get_session_id = false;
         self
     }
@@ -132,9 +132,9 @@ impl ClientOptions {
     /// - If no api-key has been set
     /// - If session_id but no cookie_store
     pub async fn build(self) -> Client {
-        assert!(!self.api_keys.is_empty(), "no api-key has been set");
+        assert!(!self.api_keys.is_empty(), "missing api-key");
         assert!(
-            !(self.get_session_id && !self.cookie_store),
+            self.cookie_store || !self.get_session_id,
             "must enable cookie store to get session_id"
         );
 
@@ -196,7 +196,7 @@ impl Client {
             tokio::time::sleep(self.retry_timeout).await;
         };
         if retries > 0 {
-            self.retries.fetch_add(retries, Ordering::Relaxed);
+            self.retries.fetch_add(retries, Ordering::SeqCst);
         }
         result
     }
@@ -207,10 +207,10 @@ impl Client {
         self.session_id.as_str()
     }
     pub fn retries(&self) -> usize {
-        self.retries.load(Ordering::Relaxed)
+        self.retries.load(Ordering::SeqCst)
     }
     pub fn reset_retries(&self) {
-        self.retries.store(0, Ordering::Relaxed);
+        self.retries.store(0, Ordering::SeqCst);
     }
 }
 

@@ -11,7 +11,7 @@ pub enum PersonaState {
 }
 
 impl PersonaState {
-    pub fn new(value: i32) -> Option<Self> {
+    pub const fn new(value: i32) -> Option<Self> {
         match value {
             0 => Some(PersonaState::Offline),
             1 => Some(PersonaState::Online),
@@ -34,7 +34,7 @@ pub enum CommunityVisibilityState {
 }
 
 impl CommunityVisibilityState {
-    pub fn new(value: i32) -> Option<Self> {
+    pub const fn new(value: i32) -> Option<Self> {
         match value {
             1 => Some(CommunityVisibilityState::Private),
             2 => Some(CommunityVisibilityState::FriendsOnly),

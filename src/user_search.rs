@@ -29,7 +29,7 @@ pub enum UserSearchError {
 
     /// There was an error while parsing the html-payload
     #[error("couldn't parse html payload ({0})")]
-    InvalidHtmlPayload(#[from] ParseError),
+    InvalidHtmlPayload(#[from] UserSearchParseError),
 }
 type Result<T> = std::result::Result<T, UserSearchError>;
 
@@ -137,7 +137,7 @@ struct Parser {
 }
 
 #[derive(Debug, Error)]
-pub enum ParseError {
+pub enum UserSearchParseError {
     /// Couldn't parse the profile-info from a row in the html-payload
     #[error("no profile info")]
     NoProfileInfo,
@@ -146,7 +146,7 @@ pub enum ParseError {
     #[error("no profile avatar")]
     NoProfileAvatar,
 }
-type ParseResult<T> = std::result::Result<T, ParseError>;
+type ParseResult<T> = std::result::Result<T, UserSearchParseError>;
 
 impl Parser {
     fn new() -> Option<Self> {
@@ -165,11 +165,11 @@ impl Parser {
         let (profile_url, persona_name) = {
             let info = match row.select(&self.info).next() {
                 Some(info) => info,
-                None => return Err(ParseError::NoProfileInfo),
+                None => return Err(UserSearchParseError::NoProfileInfo),
             };
             let profile_url = match info.value().attr("href") {
                 Some(href) => href.to_owned(),
-                None => return Err(ParseError::NoProfileInfo),
+                None => return Err(UserSearchParseError::NoProfileInfo),
             };
             (profile_url, info.inner_html())
         };
@@ -177,11 +177,11 @@ impl Parser {
         let avatar_full = {
             let image = match row.select(&self.profile_pic).next() {
                 Some(image) => image,
-                None => return Err(ParseError::NoProfileAvatar),
+                None => return Err(UserSearchParseError::NoProfileAvatar),
             };
             let mut avatar_medium = match image.value().attr("src") {
                 Some(avatar) => (avatar[..avatar.len() - AVATAR_MEDIUM_SUFFIX.len()]).to_owned(),
-                None => return Err(ParseError::NoProfileAvatar),
+                None => return Err(UserSearchParseError::NoProfileAvatar),
             };
             avatar_medium.push_str(AVATAR_FULL_SUFFIX);
             avatar_medium

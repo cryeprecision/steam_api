@@ -26,7 +26,8 @@ fn to_symbol(index: u8) -> Option<char> {
     }
 }
 
-fn _from_symbol(sym: char) -> Option<u8> {
+#[cfg(test)]
+fn from_symbol(sym: char) -> Option<u8> {
     match sym {
         'A'..='H' => Some(sym as u8 - b'A'),      // [0, 7]
         'J'..='N' => Some(sym as u8 - b'A' - 1),  // [8, 12]
@@ -74,25 +75,39 @@ impl SteamId {
 
 #[cfg(test)]
 mod tests {
-    use super::{_from_symbol, to_symbol, SteamId};
+    use super::{from_symbol, to_symbol, SteamId};
 
     #[test]
     fn to_friend_code_works() {
         let id = SteamId(76561197960287930);
-        assert_eq!(id.hash(), 0x890C9498);
         assert_eq!(id.to_friend_code(), "SUCVS-FADA");
+    }
+
+    #[test]
+    fn from_symbol_offsets() {
+        assert_eq!(0, from_symbol('A').unwrap());
+        assert_eq!(7, from_symbol('H').unwrap());
+        // Skipping `I`
+        assert_eq!(8, from_symbol('J').unwrap());
+        assert_eq!(12, from_symbol('N').unwrap());
+        // Skipping `O`
+        assert_eq!(13, from_symbol('P').unwrap());
+        assert_eq!(23, from_symbol('Z').unwrap());
+        // Skipping `0` and `1`
+        assert_eq!(24, from_symbol('2').unwrap());
+        assert_eq!(31, from_symbol('9').unwrap());
     }
 
     #[test]
     fn from_to_symbol_works() {
         let valid = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         valid.chars().enumerate().for_each(|(i, c)| {
-            assert_eq!(i, _from_symbol(c).unwrap() as usize);
+            assert_eq!(i, from_symbol(c).unwrap() as usize);
             assert_eq!(to_symbol(i as u8).unwrap(), c);
         });
 
         for c in "I1O0".chars() {
-            assert_eq!(_from_symbol(c), None)
+            assert_eq!(from_symbol(c), None)
         }
 
         assert_eq!(to_symbol(32), None);

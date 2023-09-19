@@ -15,7 +15,7 @@ pub enum VanityUrlError {
     #[error("invalid steam-id: {0}")]
     InvalidSteamId(String),
 }
-pub type Result<T> = std::result::Result<T, VanityUrlError>;
+type Result<T> = std::result::Result<T, VanityUrlError>;
 
 #[derive(Deserialize, Debug)]
 struct ResponseInner {
@@ -30,14 +30,11 @@ struct Response {
 impl ParseResponse<Response> for Option<SteamId> {
     type Error = VanityUrlError;
     fn parse_response(value: Response) -> Result<Self> {
-        let id = match value.response.steam_id {
-            Some(id) => id,
-            None => return Ok(None),
+        let Some(id) = value.response.steam_id else {
+            return Ok(None);
         };
-        match SteamId::from_str(&id) {
-            Err(_) => Err(VanityUrlError::InvalidSteamId(id)),
-            Ok(id) => Ok(Some(id)),
-        }
+        let id = SteamId::from_str(&id).map_err(|_| VanityUrlError::InvalidSteamId(id))?;
+        Ok(Some(id))
     }
 }
 

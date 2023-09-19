@@ -23,11 +23,11 @@ use thiserror::Error;
 pub struct SteamId(pub u64);
 
 #[derive(Debug, Error)]
-pub enum ParseError {
+pub enum SteamIdError {
     #[error("couldn't parse steam-id")]
     InvalidString(#[from] std::num::ParseIntError),
 }
-pub type Result<T> = std::result::Result<T, ParseError>;
+type Result<T> = std::result::Result<T, SteamIdError>;
 
 impl fmt::Display for SteamId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -36,7 +36,7 @@ impl fmt::Display for SteamId {
 }
 
 impl FromStr for SteamId {
-    type Err = ParseError;
+    type Err = SteamIdError;
     fn from_str(s: &str) -> Result<Self> {
         Ok(SteamId(s.parse::<u64>()?))
     }
@@ -74,23 +74,23 @@ impl SteamId {
     pub const MAX_DIGITS_FOR_U64: usize = 20;
 
     /// [`W = 2 * Z + Y`](https://developer.valvesoftware.com/wiki/SteamID#Steam_ID_as_a_Steam_Community_ID#:~:text=W%3DZ*2%2BY)
-    pub fn w(&self) -> u64 {
+    pub const fn w(&self) -> u64 {
         2 * self.acc_nr() + self.y()
     }
 
-    pub fn y(&self) -> u64 {
+    pub const fn y(&self) -> u64 {
         (self.0 >> Self::Y_SHIFT) & Self::Y_MASK
     }
 
-    pub fn acc_nr(&self) -> u64 {
+    pub const fn acc_nr(&self) -> u64 {
         (self.0 >> Self::ACC_NR_SHIFT) & Self::ACC_NR_MASK
     }
 
-    pub fn instance(&self) -> u64 {
+    pub const fn instance(&self) -> u64 {
         (self.0 >> Self::INSTANCE_SHIFT) & Self::INSTANCE_MASK
     }
 
-    pub fn acc_type(&self) -> Option<AccountType> {
+    pub const fn acc_type(&self) -> Option<AccountType> {
         match (self.0 >> Self::TYPE_SHIFT) & Self::TYPE_MASK {
             0 => Some(AccountType::Invalid),
             1 => Some(AccountType::Individual),
@@ -107,7 +107,7 @@ impl SteamId {
         }
     }
 
-    pub fn universe(&self) -> Option<Universe> {
+    pub const fn universe(&self) -> Option<Universe> {
         match (self.0 >> Self::UNIVERSE_SHIFT) & Self::UNIVERSE_MASK {
             0 => Some(Universe::Invalid),
             1 => Some(Universe::Public),
@@ -119,7 +119,7 @@ impl SteamId {
         }
     }
 
-    pub fn as_u64(self) -> u64 {
+    pub const fn as_u64(self) -> u64 {
         self.0
     }
 
@@ -160,7 +160,7 @@ pub enum AccountType {
 }
 
 impl AccountType {
-    pub fn to_letter(self) -> Option<char> {
+    pub const fn to_letter(self) -> Option<char> {
         match self {
             AccountType::Invalid => Some('I'),
             AccountType::Individual => Some('U'),
@@ -174,7 +174,7 @@ impl AccountType {
             AccountType::AnonUser => Some('a'),
         }
     }
-    pub fn as_u64(self) -> u64 {
+    pub const fn as_u64(self) -> u64 {
         match self {
             AccountType::Invalid => 0,
             AccountType::Individual => 1,
@@ -203,7 +203,7 @@ pub enum Universe {
 }
 
 impl Universe {
-    pub fn as_u64(self) -> u64 {
+    pub const fn as_u64(self) -> u64 {
         match self {
             Universe::Invalid => 0,
             Universe::Public => 1,

@@ -10,7 +10,7 @@ pub enum SteamLevelError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 }
-pub type Result<T> = std::result::Result<T, SteamLevelError>;
+type Result<T> = std::result::Result<T, SteamLevelError>;
 
 #[derive(Deserialize, Debug)]
 struct Response {
