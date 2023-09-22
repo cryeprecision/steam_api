@@ -1,0 +1,34 @@
+{
+  "response": {
+    "players": [
+      {
+        "steamid": "76561198230177976",
+        "communityvisibilitystate": 3,
+        "profilestate": 1,
+        "personaname": "ＭＥＨＩＫＯＶ",
+        "commentpermission": 1,
+        "profileurl": "https://steamcommunity.com/id/mehikovskyyyyy/",
+        "avatar": "https://avatars.steamstatic.com/3cc9dd106fc8b72237056f37c4e9597d27637c6a.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/3cc9dd106fc8b72237056f37c4e9597d27637c6a_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/3cc9dd106fc8b72237056f37c4e9597d27637c6a_full.jpg",
+        "avatarhash": "3cc9dd106fc8b72237056f37c4e9597d27637c6a",
+        "personastate": 0,
+        "primaryclanid": "103582791471778028",
+        "timecreated": 1432447593,
+        "personastateflags": 0
+      },
+      {
+        "steamid": "76561199159691884",
+        "communityvisibilitystate": 1,
+        "profilestate": 1,
+        "personaname": "Galarian Meowth",
+        "profileurl": "https://steamcommunity.com/profiles/76561199159691884/",
+        "avatar": "https://avatars.steamstatic.com/1cf21548bdeed90a84663347083b06d84249bcc3.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/1cf21548bdeed90a84663347083b06d84249bcc3_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/1cf21548bdeed90a84663347083b06d84249bcc3_full.jpg",
+        "avatarhash": "1cf21548bdeed90a84663347083b06d84249bcc3",
+        "personastate": 0
+      }
+    ]
+  }
+}

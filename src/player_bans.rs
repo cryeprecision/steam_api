@@ -1,15 +1,15 @@
+use std::collections::HashMap;
+use std::str::FromStr;
+
+use serde::Deserialize;
+use thiserror::Error;
+
 use crate::client::Client;
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
 use crate::enums::EconomyBan;
 use crate::parse_response::ParseResponse;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
-
-use std::collections::HashMap;
-use std::str::FromStr;
-
-use serde::Deserialize;
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PlayerBanError {
@@ -132,8 +132,10 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::{steam_id::SteamId, ClientOptions};
     use futures::StreamExt;
+
+    use crate::steam_id::SteamId;
+    use crate::Client;
 
     #[tokio::test]
     async fn it_works() {
@@ -158,7 +160,7 @@ mod tests {
 
         dotenv::dotenv().unwrap();
         let api_key = dotenv::var("STEAM_API_KEY").unwrap();
-        let client = ClientOptions::new().api_key(api_key).build().await;
+        let client = Client::options().api_key(api_key).build().await.unwrap();
 
         let mut stream = futures::stream::iter(ids.iter().cloned())
             .map(|ids| client.get_player_bans(ids))

@@ -1,7 +1,7 @@
+use byteorder::{ByteOrder, LittleEndian};
+
 use crate::bit_chunks::{BitChunks, ChunksU4, ChunksU5};
 use crate::steam_id::SteamId;
-
-use byteorder::{ByteOrder, LittleEndian};
 
 struct U32Pair(u32, u32);
 

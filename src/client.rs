@@ -3,8 +3,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::cookie::Jar;
+use reqwest::header::{HeaderValue, SET_COOKIE};
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
+use thiserror::Error;
+
+use crate::constants::USER_SEARCH_API;
 
 pub struct Client {
     retry_timeout: Duration,
@@ -16,14 +20,30 @@ pub struct Client {
     retries: AtomicUsize,
 }
 
-// TODO: Make getting session_id optional since it requires a request on construction
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("builder configuration is invalid")]
+    ClientConfig(reqwest::Error),
+    #[error("couldn't parse url")]
+    UrlParse,
+    #[error("couldn't make request to get session id")]
+    Request,
+    #[error("response is missing set-cookie header for session id")]
+    SetCookieMissing,
+    #[error("set-cookie header for session-id is not valid utf-8")]
+    HeadersUtf8,
+    #[error("session id in set-cookie header has invalid length")]
+    SetCookieLen,
+    #[error("builder is missing api-key")]
+    ApiKey,
+}
+type Result<T> = std::result::Result<T, Error>;
+
 pub struct ClientOptions {
     retry_timeout: Option<Duration>,
     max_retries: Option<usize>,
     api_keys: Vec<String>,
     dont_retry: Vec<StatusCode>,
-    cookie_store: bool,
-    get_session_id: bool,
 }
 
 impl Default for ClientOptions {
@@ -40,115 +60,96 @@ impl ClientOptions {
             max_retries: None,
             api_keys: Vec::new(),
             dont_retry: Vec::new(),
-            cookie_store: true,
-            get_session_id: true,
         }
     }
-    #[must_use]
-    pub const fn retry_timeout(mut self, dur: Duration) -> Self {
-        self.retry_timeout = Some(dur);
-        self
-    }
-    #[must_use]
-    pub fn retry_timeout_ms(self, ms: u64) -> Self {
-        self.retry_timeout(Duration::from_millis(ms))
-    }
-    #[must_use]
-    pub const fn retries(mut self, retries: usize) -> Self {
+
+    pub fn retries(&mut self, retries: usize) -> &mut Self {
         self.max_retries = Some(retries);
         self
     }
-    #[must_use]
-    pub fn api_key(mut self, key: String) -> Self {
-        self.api_keys.push(key);
+    pub fn retry_timeout(&mut self, dur: Duration) -> &mut Self {
+        self.retry_timeout = Some(dur);
         self
     }
-    #[must_use]
-    pub fn api_keys(mut self, keys: Vec<String>) -> Self {
-        self.api_keys.extend(keys);
+    pub fn retry_timeout_ms(&mut self, ms: u64) -> &mut Self {
+        self.retry_timeout = Some(Duration::from_millis(ms));
         self
     }
-    #[must_use]
-    pub fn dont_retry(mut self, code: StatusCode) -> Self {
+    pub fn dont_retry(&mut self, code: StatusCode) -> &mut Self {
         self.dont_retry.push(code);
         self
     }
-    #[must_use]
-    pub fn dont_retries(mut self, codes: Vec<StatusCode>) -> Self {
+    pub fn dont_retries(&mut self, codes: Vec<StatusCode>) -> &mut Self {
         self.dont_retry.extend(codes);
         self
     }
-    #[must_use]
-    pub fn dont_retry_unauthorized(mut self) -> Self {
+    pub fn dont_retry_unauthorized(&mut self) -> &mut Self {
         self.dont_retry.push(StatusCode::UNAUTHORIZED);
         self
     }
-    #[must_use]
-    pub const fn no_cookie_store(mut self) -> Self {
-        self.cookie_store = false;
-        self.get_session_id = false;
+
+    pub fn api_key(&mut self, key: String) -> &mut Self {
+        self.api_keys.push(key);
         self
     }
-    #[must_use]
-    pub const fn no_session_id(mut self) -> Self {
-        self.get_session_id = false;
+    pub fn api_keys(&mut self, keys: Vec<String>) -> &mut Self {
+        self.api_keys.extend(keys);
         self
     }
-    fn client_with_cookie_store() -> Option<(reqwest::Client, Arc<Jar>)> {
-        let jar = Arc::new(Jar::default());
-        let builder = reqwest::Client::builder().cookie_provider(Arc::clone(&jar));
-        let client = builder.build().ok()?;
-        Some((client, jar))
+
+    fn client_with_cookie_store() -> Result<reqwest::Client> {
+        let builder = reqwest::Client::builder().cookie_provider(Arc::new(Jar::default()));
+        let client = builder.build().map_err(Error::ClientConfig)?;
+        Ok(client)
     }
-    async fn client_with_session_id() -> Option<(reqwest::Client, String)> {
-        use crate::constants::USER_SEARCH_API;
-        use reqwest::cookie::CookieStore;
-        use reqwest::Url;
-        use std::str::FromStr;
+    async fn get_session_id(client: &reqwest::Client) -> Result<String> {
+        // Header value looks like this
+        // sessionid=a0a0a0a0a0a0a0a0a0a0a0a0; Path=/; Secure; SameSite=None
+        const SESSION_ID_PREFIX: &str = "sessionid=";
 
-        const SESSION_ID: &str = "sessionid=";
-        let url = Url::from_str("https://steamcommunity.com/").ok()?;
+        // Using the USER_SEARCH_API URL because it returns very little data
+        let resp = client
+            .get(USER_SEARCH_API)
+            .send()
+            .await
+            .map_err(|_| Error::Request)?;
 
-        let (client, jar) = Self::client_with_cookie_store()?;
-
-        let resp = client.get(USER_SEARCH_API).send().await.ok()?;
+        // We expect this status code to be returned
         if resp.status() != StatusCode::UNAUTHORIZED {
-            // Every status-code other than 401 should be an error
-            resp.error_for_status().ok()?;
+            resp.error_for_status_ref().map_err(|_| Error::UrlParse)?;
         }
 
-        let cookies = jar.cookies(&url)?;
-        let cookie_str = cookies.to_str().ok()?;
-        let session_id = cookie_str
-            .split(';')
-            .map(str::trim_start)
-            .find(|&str| str.starts_with(SESSION_ID))
-            .map(|str| &str[SESSION_ID.len()..])?;
+        fn find_cookie(v: &HeaderValue) -> Option<&str> {
+            let str = v.to_str().ok()?;
+            str.strip_prefix(SESSION_ID_PREFIX)?
+                .split_once(';')
+                .map(|(id, _)| id)
+        }
 
-        Some((client, session_id.to_string()))
+        let set_cookies = resp.headers().get_all(SET_COOKIE);
+        let session_id = set_cookies
+            .iter()
+            .filter_map(find_cookie)
+            .next()
+            .ok_or(Error::SetCookieMissing)?;
+
+        // let session_id = cookie.split
+
+        Ok(session_id.to_string())
     }
 
     /// # Panics
     /// - If no api-key has been set
     /// - If session_id but no cookie_store
-    pub async fn build(self) -> Client {
-        assert!(!self.api_keys.is_empty(), "missing api-key");
-        assert!(
-            self.cookie_store || !self.get_session_id,
-            "must enable cookie store to get session_id"
-        );
+    pub async fn build(&self) -> Result<Client> {
+        if self.api_keys.is_empty() {
+            return Err(Error::ApiKey);
+        }
 
-        let (client, session_id) = if self.cookie_store && self.get_session_id {
-            Self::client_with_session_id().await.unwrap()
-        } else {
-            let client = reqwest::Client::builder()
-                .cookie_store(self.cookie_store)
-                .build()
-                .unwrap();
-            (client, String::new())
-        };
+        let client = Self::client_with_cookie_store()?;
+        let session_id = Self::get_session_id(&client).await?;
 
-        let mut dont_retry = self.dont_retry;
+        let mut dont_retry = self.dont_retry.clone();
 
         // TODO: Is it really a good idea to add this here? (NOIDONTTHINKSO)
         // if !dont_retry.contains(&StatusCode::UNAUTHORIZED) {
@@ -158,15 +159,15 @@ impl ClientOptions {
         dont_retry.sort_unstable();
         dont_retry.dedup();
 
-        Client {
+        Ok(Client {
             retry_timeout: self.retry_timeout.unwrap_or(Duration::from_millis(1000)),
             max_retries: self.max_retries.unwrap_or(3),
             dont_retry,
             session_id,
-            api_keys: self.api_keys,
+            api_keys: self.api_keys.clone(),
             client,
             retries: AtomicUsize::new(0),
-        }
+        })
     }
 }
 
@@ -212,15 +213,28 @@ impl Client {
     pub fn reset_retries(&self) {
         self.retries.store(0, Ordering::SeqCst);
     }
+    /// Clone the inner [`reqwest::Client`], which is just a call to `Arc::clone`
+    /// to share the connection pool with other program parts that need one.
+    pub fn clone_client(&self) -> reqwest::Client {
+        self.client.clone()
+    }
+    pub fn options() -> ClientOptions {
+        ClientOptions::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ClientOptions;
+    use super::Client;
 
     #[tokio::test]
-    async fn it_works() {
-        let api_key = dotenv::var("STEAM_API_KEY").unwrap();
-        let _client = ClientOptions::new().api_key(api_key).build().await;
+    async fn get_session_id() {
+        let client = Client::options()
+            .api_key("invalid".to_string())
+            .build()
+            .await
+            .unwrap();
+
+        println!("{}", client.session_id());
     }
 }

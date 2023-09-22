@@ -1,6 +1,7 @@
-use crate::steam_id::SteamId;
 use std::borrow::Borrow;
 use std::fmt::{Display, Write};
+
+use crate::steam_id::SteamId;
 
 /// Extends iterators that iterate over [`SteamId`]s or [`&SteamId`](SteamId)s
 pub trait SteamIdExt: Iterator {

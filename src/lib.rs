@@ -84,6 +84,10 @@
 #![feature(int_roundings)]
 #![feature(generic_arg_infer)]
 
+#[cfg(test)]
+#[macro_use]
+mod test_util;
+
 pub mod constants;
 
 mod enums;

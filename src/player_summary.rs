@@ -1,17 +1,17 @@
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::str::FromStr;
+
+use chrono::{DateTime, Local, TimeZone, Utc};
+use serde::Deserialize;
+use thiserror::Error;
+
 use crate::client::Client;
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
 use crate::enums::{CommunityVisibilityState, PersonaState};
-use crate::parse_response::ParseResponse;
+use crate::parse_response::{ParseJsonResponse, ParseResponse};
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
-
-use std::collections::HashMap;
-use std::str::FromStr;
-
-use chrono::TimeZone;
-use chrono::{DateTime, Local, Utc};
-use serde::Deserialize;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PlayerSummaryError {
@@ -90,6 +90,28 @@ struct ResponseInner {
 #[derive(Deserialize, Debug)]
 struct Response {
     response: ResponseInner,
+}
+
+/// TODO: Make this `HashMap<SteamId, Option<PlayerSummary>>`
+/// to distinguish between profiles that didn't yield a response
+/// and profiles that weren't requested.
+#[derive(Debug)]
+pub struct PlayerSummaries {
+    inner: HashMap<SteamId, PlayerSummary>,
+}
+
+impl PlayerSummaries {
+    pub fn was_requested(&self) -> bool {
+        todo!("convert the map value to option to be able to distinguish");
+    }
+}
+
+impl Deref for PlayerSummaries {
+    type Target = HashMap<SteamId, PlayerSummary>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 #[derive(Debug)]
@@ -177,6 +199,85 @@ impl ParseResponse<ResponseInnerElement> for PlayerSummary {
     }
 }
 
+impl ParseJsonResponse for ResponseInnerElement {
+    type Error = PlayerSummaryError;
+    type Output = PlayerSummary;
+
+    fn parse_steam_json(self) -> std::result::Result<Self::Output, Self::Error> {
+        let last_logoff = match self.last_logoff {
+            Some(unix) => Some(
+                Utc.timestamp_opt(unix, 0)
+                    .single()
+                    .ok_or(PlayerSummaryError::InvalidTimestamp(unix))?
+                    .with_timezone(&Local),
+            ),
+            None => None,
+        };
+        let time_created = match self.time_created {
+            Some(unix) => Some(
+                Utc.timestamp_opt(unix, 0)
+                    .single()
+                    .ok_or(PlayerSummaryError::InvalidTimestamp(unix))?
+                    .with_timezone(&Local),
+            ),
+            None => None,
+        };
+
+        let vis_state = CommunityVisibilityState::new(self.community_visibility_state).ok_or(
+            PlayerSummaryError::InvalidCommunityVisibilityState(self.community_visibility_state),
+        )?;
+
+        let persona_state = PersonaState::new(self.persona_state)
+            .ok_or(PlayerSummaryError::InvalidPersonaState(self.persona_state))?;
+
+        let clan_id = match self.primary_clan_id {
+            Some(clan_id) => Some(
+                u64::from_str(&clan_id)
+                    .map_err(|_| PlayerSummaryError::InvalidPrimaryClanId(clan_id))?,
+            ),
+            None => None,
+        };
+
+        let steam_id = SteamId::from_str(&self.steam_id)
+            .map_err(|_| PlayerSummaryError::InvalidSteamId(self.steam_id))?;
+
+        Ok(PlayerSummary {
+            steam_id,
+            community_visibility_state: vis_state,
+            profile_configured: self.profile_state.is_some(),
+            persona_name: self.persona_name,
+            profile_url: self.profile_url,
+            avatar: self.avatar,
+            avatar_medium: self.avatar_medium,
+            avatar_full: self.avatar_full,
+            avatar_hash: self.avatar_hash,
+            last_logoff,
+            persona_state,
+            real_name: self.real_name,
+            primary_clan_id: clan_id,
+            time_created,
+            persona_state_flags: self.persona_state_flags,
+            local_country_code: self.local_country_code,
+        })
+    }
+}
+
+impl ParseJsonResponse for Response {
+    type Error = PlayerSummaryError;
+    type Output = PlayerSummaries;
+
+    fn parse_steam_json(self) -> std::result::Result<Self::Output, Self::Error> {
+        let mut map = HashMap::with_capacity(PLAYER_SUMMARIES_IDS_PER_REQUEST);
+
+        for elem in self.response.players {
+            let sum = elem.parse_steam_json()?;
+            map.insert(sum.steam_id, sum);
+        }
+
+        Ok(PlayerSummaries { inner: map })
+    }
+}
+
 impl std::fmt::Display for PlayerSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("PlayerSummary");
@@ -230,46 +331,13 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::{steam_id::SteamId, ClientOptions};
-    use futures::StreamExt;
+    use super::Response;
+    use crate::parse_response::ParseJsonResponse;
 
-    #[tokio::test]
-    async fn it_works() {
-        let ids: [&[SteamId]; _] = [
-            &[76561199123543583.into()],
-            &[76561198196615742.into()],
-            &[76561199159691884.into()],
-            &[76561198230177976.into()],
-            &[76561198414415313.into()],
-            &[76561197992321696.into()],
-            &[76561198350302388.into()],
-            &[76561198159967543.into()],
-            &[76561197981967565.into()],
-            &[76561199049236696.into()],
-            &[76561199063760869.into()],
-            &[76561197961074129.into()],
-            &[76561198292293761.into()],
-            &[76561198145832850.into()],
-            &[76561198151659207.into()],
-            &[76561198405122517.into()],
-        ];
-
-        dotenv::dotenv().unwrap();
-        let api_key = dotenv::var("STEAM_API_KEY").unwrap();
-        let client = ClientOptions::new().api_key(api_key).build().await;
-
-        let mut stream = futures::stream::iter(ids.iter())
-            .map(|&chunk| client.get_player_summaries(&chunk))
-            .buffer_unordered(2);
-
-        while let Some(res) = stream.next().await {
-            for (id, summary) in res.unwrap().iter() {
-                if let Some(summary) = summary {
-                    println!("{}", summary);
-                } else {
-                    println!("{} missing", id);
-                }
-            }
-        }
+    #[test]
+    fn parses() {
+        let json: Response = load_test_json!("player_summaries.json");
+        let summaries = json.parse_steam_json().unwrap();
+        println!("{:#?}", summaries);
     }
 }

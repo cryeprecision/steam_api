@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
+
 use thiserror::Error;
 
 /// Wrapper for [`SteamId`]s that is implemented according to [`Valve`](https://developer.valvesoftware.com/wiki/SteamID)

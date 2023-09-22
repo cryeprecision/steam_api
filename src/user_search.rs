@@ -1,14 +1,16 @@
-use crate::client::Client;
-use crate::constants::USER_SEARCH_API;
-use crate::parse_response::ParseResponse;
-use crate::steam_id::SteamId;
+//! The `sessionid` has to be set both as a cookie and as a query parameter!
+//! Otherwise the request is rejected as UNAUTHORIZED.
 
-use std::fmt;
 use std::str::FromStr;
 
 use scraper::{ElementRef, Html, Selector};
 use serde::Deserialize;
 use thiserror::Error;
+
+use crate::client::Client;
+use crate::constants::USER_SEARCH_API;
+use crate::parse_response::{ParseJsonResponse, ParseResponse};
+use crate::steam_id::SteamId;
 
 #[derive(Debug, Error)]
 pub enum UserSearchError {
@@ -43,6 +45,7 @@ struct Response {
     html: String,
 }
 
+#[derive(Debug)]
 pub struct UserSearchEntry {
     pub persona_name: String,
     pub profile_url: String,
@@ -51,46 +54,24 @@ pub struct UserSearchEntry {
 }
 
 impl UserSearchEntry {
-    /// Abbreviate the profile-url from the html-payload.
-    ///
-    /// # Example
-    ///
-    /// `https://steamcommunity.com/id/GabeLoganNewell => id/GabeLoganNewell`
-    /// `http://steamcommunity.com/profiles/76561197960287930 => profiles/76561197960287930`
-    pub fn short_url(&self) -> Option<&str> {
-        const ID: &str = "/profiles/";
-        const URL: &str = "/id/";
-        let find = self.profile_url.find(ID);
-        let find = find.or_else(|| self.profile_url.find(URL));
-        find.map(|idx| &self.profile_url[idx + 1..])
-    }
     /// Get the [`SteamId`] from the URL if possible
     ///
     /// # Example
     ///
-    /// `https://steamcommunity.com/id/GabeLoganNewell => GabeLoganNewell`
+    /// `http://steamcommunity.com/profiles/76561197960287930 => 76561197960287930`
     pub fn steam_id(&self) -> Option<SteamId> {
         const ID: &str = "/profiles/";
         SteamId::from_str(self.profile_url.split_once(ID)?.1).ok()
     }
+
     /// Get the `VanityURL` from the URL if possible
     ///
     /// # Example
     ///
-    /// `http://steamcommunity.com/profiles/76561197960287930 => 76561197960287930`
+    /// `https://steamcommunity.com/id/GabeLoganNewell => GabeLoganNewell`
     pub fn vanity_url(&self) -> Option<&str> {
         const URL: &str = "/id/";
         Some(self.profile_url.split_once(URL)?.1)
-    }
-}
-
-impl fmt::Debug for UserSearchEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UserSearchEntry")
-            .field("name", &self.persona_name)
-            .field("url", &self.short_url().unwrap_or_default())
-            .field("aliases", &self.aliases.len())
-            .finish_non_exhaustive()
     }
 }
 
@@ -122,6 +103,35 @@ impl ParseResponse<Response> for UserSearchPage {
             search_string: value.search_text,
             total_result_count: value.search_result_count,
             search_filter: value.search_filter,
+            search_page: search_page as usize,
+            results,
+        })
+    }
+}
+
+impl ParseJsonResponse for Response {
+    type Error = UserSearchError;
+    type Output = UserSearchPage;
+
+    fn parse_steam_json(self) -> std::result::Result<Self::Output, Self::Error> {
+        if self.success != 1 {
+            return Err(UserSearchError::NoSuccess);
+        }
+
+        let search_page = match self.search_page {
+            serde_json::Value::Number(num) => num.as_u64(),
+            serde_json::Value::String(str) => str.parse::<u64>().ok(),
+            _ => None,
+        }
+        .ok_or(UserSearchError::InvalidSearchPage)?;
+
+        let parser = Parser::new().ok_or(UserSearchError::InvalidSelector)?;
+        let results = parser.parse(&self.html)?;
+
+        Ok(UserSearchPage {
+            search_string: self.search_text,
+            total_result_count: self.search_result_count,
+            search_filter: self.search_filter,
             search_page: search_page as usize,
             results,
         })
@@ -230,30 +240,25 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::ClientOptions;
+    use super::Response;
+    use crate::parse_response::ParseJsonResponse;
+    use crate::SteamId;
 
-    use futures::StreamExt;
+    #[test]
+    fn parses() {
+        let json: Response = load_test_json!("user_search.json");
+        let search = json.parse_steam_json().unwrap();
 
-    #[tokio::test]
-    async fn it_works() {
-        dotenv::dotenv().unwrap();
-        let api_key = dotenv::var("STEAM_API_KEY").unwrap();
-        let client = ClientOptions::new().api_key(api_key).build().await;
+        assert_eq!(search.search_string, "sauce");
+        assert_eq!(search.total_result_count, 47813);
+        assert_eq!(search.search_page, 1);
 
-        let searches = std::iter::repeat("prog").zip(1..=148);
+        let results = search.results;
+        assert_eq!(results.len(), 20);
 
-        let mut stream = futures::stream::iter(searches)
-            .map(|(query, page)| client.get_search_page(query, page))
-            .buffer_unordered(20);
-
-        while let Some(res) = stream.next().await {
-            let res = res.unwrap();
-            println!(
-                "Page: {:03}, Results: {}/{}",
-                res.search_page,
-                res.results.len(),
-                res.total_result_count
-            );
-        }
+        let snd = results.iter().nth(1).unwrap();
+        assert_eq!(snd.persona_name, "The Sauce");
+        assert_eq!(snd.aliases.len(), 0);
+        assert_eq!(snd.steam_id(), Some(SteamId(76561197971683832)));
     }
 }

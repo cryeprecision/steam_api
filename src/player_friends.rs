@@ -1,14 +1,14 @@
-use crate::client::Client;
-use crate::constants::PLAYER_FRIENDS_API;
-use crate::parse_response::ParseResponse;
-use crate::steam_id::SteamId;
-
 use std::str::FromStr;
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
+
+use crate::client::Client;
+use crate::constants::PLAYER_FRIENDS_API;
+use crate::parse_response::ParseResponse;
+use crate::steam_id::SteamId;
 
 #[derive(Error, Debug)]
 pub enum PlayerFriendsError {
@@ -103,57 +103,10 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::client::ClientOptions;
-    use crate::steam_id::SteamId;
-    use futures::{FutureExt, StreamExt};
-    use reqwest::StatusCode;
 
-    #[tokio::test]
-    async fn it_works() {
-        // https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=E84C8EF965448E02C469BB3228D46311&relationship=friend&steamid=76561198196615742
-        // https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=E84C8EF965448E02C469BB3228D46311&relationship=friend&steamid=76561198089612262
-        // https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=E84C8EF965448E02C469BB3228D46311&relationship=friend&steamid=76561197992321696
-        // https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=E84C8EF965448E02C469BB3228D46311&relationship=friend&steamid=76561198350302388
-        // https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=E84C8EF965448E02C469BB3228D46311&relationship=friend&steamid=76561198159967543
-        // https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=E84C8EF965448E02C469BB3228D46311&relationship=friend&steamid=76561199063760869
+    #[test]
+    fn parses_public() {}
 
-        let ids: [SteamId; _] = [
-            76561198196615742.into(), // normal, private friends
-            76561198089612262.into(), // normal, public friends
-            76561197992321696.into(), // deleted
-            76561198350302388.into(), // community banned
-            76561198159967543.into(), // private
-            76561199063760869.into(), // private
-        ];
-
-        dotenv::dotenv().unwrap();
-        let api_key = dotenv::var("STEAM_API_KEY").unwrap();
-        let client = ClientOptions::new()
-            .api_key(api_key)
-            .dont_retry(StatusCode::UNAUTHORIZED)
-            .build()
-            .await;
-
-        let mut stream = futures::stream::iter(ids.iter())
-            .map(|&id| client.get_player_friends(id).map(move |r| (id, r)))
-            .buffer_unordered(100);
-
-        while let Some((id, res)) = stream.next().await {
-            let res = match res {
-                Ok(res) => match res {
-                    None => {
-                        println!("[{}] private friends", id);
-                        continue;
-                    }
-                    Some(res) => res,
-                },
-                Err(err) => {
-                    println!("[{}] err: {}", id, err);
-                    continue;
-                }
-            };
-            println!("[{}] {} friends", id, res.len());
-        }
-        println!("Retries: {}", client.retries());
-    }
+    #[test]
+    fn parses_private() {}
 }

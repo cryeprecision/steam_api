@@ -1,5 +1,6 @@
 {
     "rust-analyzer.cargo.features": [
+        "friend_code",
         "user_search"
     ]
 }

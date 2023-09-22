@@ -12,6 +12,7 @@ where
     stream
 }
 
+/// Construct a rate-limiting iterator.
 fn limiter(per_sec: u64) -> Interval {
     let delay_ms = ((1.0 / per_sec as f64) * 1_000.0) as u64;
     let mut limiter = interval(Duration::from_millis(delay_ms));
@@ -61,25 +62,31 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::rate_limit;
     use futures::StreamExt;
 
+    use super::rate_limit;
+
+    // How much absolule variation should be allwed when
+    // using the `assert_elapsed_ms` macro.
+    const EPS_MS: f64 = 10.0;
+
     macro_rules! assert_elapsed_ms {
-        ($now:ident, $ms_min:literal, $ms_max:literal) => {
+        ($now:ident, $expected_ms:literal) => {
             #[allow(unused_comparisons)]
             {
-                let elapsed = $now.elapsed().as_millis();
+                let elapsed = $now.elapsed().as_secs_f64() * 1_000f64;
+                let expected_ms = $expected_ms as f64;
                 assert!(
-                    elapsed >= $ms_min,
+                    elapsed >= expected_ms - EPS_MS,
                     "rate limit ticked too fast ({}ms < {}ms)",
                     elapsed,
-                    $ms_min
+                    expected_ms - EPS_MS
                 );
                 assert!(
-                    elapsed <= $ms_max,
+                    elapsed <= expected_ms + EPS_MS,
                     "rate limit ticked too slow ({}ms > {}ms)",
                     elapsed,
-                    $ms_max
+                    expected_ms + EPS_MS
                 );
             }
         };
@@ -91,18 +98,18 @@ mod tests {
         let mut count = rate_limit(0..4, 4);
 
         let _ = count.next().await;
-        assert_elapsed_ms!(now, 0, 10);
+        assert_elapsed_ms!(now, 0);
 
         let _ = count.next().await;
-        assert_elapsed_ms!(now, 240, 260);
+        assert_elapsed_ms!(now, 250);
 
         let _ = count.next().await;
-        assert_elapsed_ms!(now, 490, 510);
+        assert_elapsed_ms!(now, 500);
 
         let _ = count.next().await;
-        assert_elapsed_ms!(now, 740, 760);
+        assert_elapsed_ms!(now, 750);
 
         assert!(count.next().await.is_none());
-        assert_elapsed_ms!(now, 990, 1010);
+        assert_elapsed_ms!(now, 1000);
     }
 }
