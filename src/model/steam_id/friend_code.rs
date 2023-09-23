@@ -47,11 +47,11 @@ fn base32_decode_u64(code: [u8; 15]) -> Option<u64> {
     let mut dec_buf = [0u8; ChunksU5::MAX_CHUNKS];
 
     let mut src_iter = code.iter().cloned();
-    for (i, dec) in dec_buf.iter_mut().enumerate() {
-        if i == 4 || i == 10 {
+    for (i, dst) in dec_buf.iter_mut().enumerate() {
+        if i == 4 || i == 9 {
             let _ = src_iter.next(); // skip '-'
         }
-        *dec = src_iter.next().and_then(from_symbol)?;
+        *dst = src_iter.next().and_then(from_symbol)?;
     }
 
     for (i, dec) in dec_buf.iter().cloned().enumerate() {
