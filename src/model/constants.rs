@@ -32,7 +32,7 @@ pub const USER_SEARCH_MAX_PAGES: usize = 500;
 /// We can only request `500` pages with `20` results each
 pub const USER_SEARCH_MAX_RESULTS: usize = USER_SEARCH_MAX_PAGES * USER_SEARCH_RESULTS_PER_PAGE;
 
-pub const PROFILE_URL_FIXED_PREFIX: &str = "https://steamcommunity.com/profiles/";
+pub const PROFILE_URL_ID64_PREFIX: &str = "https://steamcommunity.com/profiles/";
 pub const PROFILE_URL_VANITY_PREFIX: &str = "https://steamcommunity.com/id/";
 
 pub const BASE_URL: &str = "https://steamcommunity.com";

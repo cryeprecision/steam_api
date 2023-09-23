@@ -4,7 +4,7 @@ use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::de::{self, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Serialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SteamTime {
     inner: DateTime<Local>,
 }

@@ -7,82 +7,42 @@ use thiserror::Error;
 
 use crate::client::Client;
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
-use crate::enums::EconomyBan;
-use crate::steam_id::SteamId;
-use crate::steam_id_ext::SteamIdExt;
+use crate::model::{EconomyBan, SteamId, SteamIdQueryExt};
 
 #[derive(Debug, Error)]
 pub enum PlayerBanError {
-    /// This API can only handle up to
-    /// [`crate::constants::PLAYER_BANS_IDS_PER_REQUEST`] ids per request
     #[error("too many ids passed for request")]
     TooManyIds,
-
-    /// For efficiency reasons the passed [SteamId]s must be unique
-    #[error("ids must be unique")]
-    NonUniqueIds(SteamId),
 
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    /// The response contained an invalid [SteamId]
-    #[error("invalid steam-id: `{0}`")]
-    InvalidSteamId(String),
-
-    #[error("invalid economy ban value: `{0}`")]
-    InvalidEconomyBan(String),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 type Result<T> = std::result::Result<T, PlayerBanError>;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PlayerBan {
     #[serde(rename(deserialize = "SteamId"))]
-    steam_id: SteamId,
+    pub steam_id: SteamId,
     #[serde(rename(deserialize = "CommunityBanned"))]
-    community_banned: bool,
+    pub community_banned: bool,
     #[serde(rename(deserialize = "VACBanned"))]
-    vac_banned: bool,
+    pub vac_banned: bool,
     #[serde(rename(deserialize = "NumberOfVACBans"))]
-    number_of_vac_bans: i32,
+    pub number_of_vac_bans: i32,
     #[serde(rename(deserialize = "DaysSinceLastBan"))]
-    days_since_last_ban: i32,
+    pub days_since_last_ban: i32,
     #[serde(rename(deserialize = "NumberOfGameBans"))]
-    number_of_game_bans: i32,
+    pub number_of_game_bans: i32,
     #[serde(rename(deserialize = "EconomyBan"))]
-    economy_ban: EconomyBan,
+    pub economy_ban: EconomyBan,
 }
 
-#[derive(Deserialize, Debug)]
-struct Response {
-    players: Vec<PlayerBan>,
-}
-
-impl std::fmt::Display for PlayerBan {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PlayerBan")
-            .field("SteamID", &self.steam_id)
-            .field("VAC", &self.number_of_vac_bans)
-            .field("GameBan", &self.number_of_game_bans)
-            .field("CommunityBan", &self.community_banned)
-            .field("LastBan", &self.days_since_last_ban)
-            .field("Econ", &self.economy_ban)
-            .finish_non_exhaustive()
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PlayerBans {
     inner: HashMap<SteamId, PlayerBan>,
-}
-
-impl From<Response> for PlayerBans {
-    fn from(value: Response) -> Self {
-        let bans = value.players;
-
-        let map = bans.into_iter().map(|ban| (ban.steam_id, ban)).collect();
-
-        PlayerBans { inner: map }
-    }
 }
 
 impl PlayerBans {
@@ -95,6 +55,19 @@ impl Deref for PlayerBans {
     type Target = HashMap<SteamId, PlayerBan>;
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct Response {
+    players: Vec<PlayerBan>,
+}
+
+impl From<Response> for PlayerBans {
+    fn from(value: Response) -> Self {
+        let bans = value.players;
+        let map = bans.into_iter().map(|ban| (ban.steam_id, ban)).collect();
+        PlayerBans { inner: map }
     }
 }
 

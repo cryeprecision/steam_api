@@ -1,10 +1,12 @@
 use std::borrow::Borrow;
 use std::fmt::{Display, Write};
 
-use crate::steam_id::SteamId;
+use super::SteamId;
+
+// TODO: Remove the borrows of SteamId
 
 /// Extends iterators that iterate over [`SteamId`]s or [`&SteamId`](SteamId)s
-pub trait SteamIdExt: Iterator {
+pub trait SteamIdQueryExt: Iterator {
     /// Builds a string by using up the iterator.
     ///
     /// Tries to be efficient, by approximating the size of the resulting
@@ -50,11 +52,11 @@ pub trait SteamIdExt: Iterator {
         buf
     }
 }
-impl<T: Borrow<SteamId>, I: Iterator<Item = T>> SteamIdExt for I {}
+impl<T: Borrow<SteamId>, I: Iterator<Item = T>> SteamIdQueryExt for I {}
 
 #[cfg(test)]
 mod tests {
-    use super::{SteamId, SteamIdExt};
+    use super::{SteamId, SteamIdQueryExt};
 
     #[test]
     fn to_steam_id_string_works() {

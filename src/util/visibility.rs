@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 /// Some respnses from the Steam API don't contain any data
 /// because the profile is private, this enum is here
 /// to reflect that concept.
+///
+/// But just using [`Option`] make much more sense, this is
+/// not used anywhere.
 #[derive(Serialize, Debug)]
 pub enum Visibility<T> {
     /// The user has set his profile to private

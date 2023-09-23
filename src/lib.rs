@@ -83,57 +83,16 @@
 
 #![feature(int_roundings)]
 #![feature(generic_arg_infer)]
+#![feature(array_try_map)]
 
 #[cfg(test)]
 #[macro_use]
 mod test_util;
 
-pub mod constants;
+mod model;
+pub use model::{api, html, *};
 
-mod enums;
-pub use enums::*;
-
-mod visibility;
-pub use visibility::*;
+pub mod util;
 
 mod client;
 pub use client::*;
-
-pub mod rate_limit;
-
-mod steam_time;
-pub use steam_time::*;
-
-mod steam_id;
-pub use steam_id::*;
-
-mod steam_id_ext;
-pub use steam_id_ext::SteamIdExt;
-
-#[cfg(feature = "friend_code")]
-mod steam_id_friend_code;
-
-#[cfg(feature = "friend_code")]
-mod bit_chunks;
-
-mod vanity_url;
-pub use vanity_url::*;
-
-mod player_summary;
-pub use player_summary::*;
-
-mod player_bans;
-pub use player_bans::*;
-
-mod player_friends;
-pub use player_friends::*;
-
-mod steam_level;
-pub use steam_level::*;
-
-mod parse_response;
-
-#[cfg(feature = "user_search")]
-mod user_search;
-#[cfg(feature = "user_search")]
-pub use user_search::*;

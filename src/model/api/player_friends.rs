@@ -6,24 +6,19 @@ use thiserror::Error;
 
 use crate::client::Client;
 use crate::constants::PLAYER_FRIENDS_API;
-use crate::steam_id::SteamId;
-use crate::SteamTime;
+use crate::model::{SteamId, SteamTime};
 
 #[derive(Error, Debug)]
 pub enum PlayerFriendsError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    /// The result contained an invalid [SteamId]
-    #[error("invalid steam-id: `{0}`")]
-    InvalidSteamId(String),
-
-    #[error("invalid timestamp: `{0}`")]
-    InvalidTimestamp(i64),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 type Result<T> = std::result::Result<T, PlayerFriendsError>;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Friend {
     #[serde(rename(deserialize = "steamid"))]
     steam_id: SteamId,
@@ -33,17 +28,6 @@ pub struct Friend {
     friends_since: SteamTime,
 }
 
-#[derive(Deserialize, Debug, Default)]
-struct ResponseInner {
-    friends: Vec<Friend>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Response {
-    #[serde(rename(deserialize = "friendslist"))]
-    friend_list: Option<ResponseInner>,
-}
-
 #[derive(Serialize, Debug)]
 pub struct FriendsList {
     /// - [`None`], if the user has set his friends to **private**
@@ -51,6 +35,17 @@ pub struct FriendsList {
     ///
     /// The [`HashMap`] is empty, if the user has **no friends**
     inner: Option<HashMap<SteamId, Friend>>,
+}
+
+#[derive(Deserialize)]
+struct ResponseInner {
+    friends: Vec<Friend>,
+}
+
+#[derive(Deserialize)]
+struct Response {
+    #[serde(rename(deserialize = "friendslist"))]
+    friend_list: Option<ResponseInner>,
 }
 
 impl From<Response> for FriendsList {

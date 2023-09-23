@@ -1,10 +1,17 @@
+mod query_ext;
+pub use query_ext::SteamIdQueryExt;
+
+#[cfg(feature = "friend_code")]
+mod friend_code;
+
 use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
 
 use serde::de::{self, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+
+use crate::model::{AccountType, Universe};
 
 /// Wrapper for [`SteamId`]s that is implemented according to [`Valve`](https://developer.valvesoftware.com/wiki/SteamID)
 ///
@@ -25,29 +32,23 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct SteamId(pub u64);
 
-#[derive(Debug, Error)]
-pub enum SteamIdError {
-    #[error("couldn't parse steam-id")]
-    InvalidString(#[from] std::num::ParseIntError),
-}
-type Result<T> = std::result::Result<T, SteamIdError>;
-
 impl fmt::Display for SteamId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl FromStr for SteamId {
-    type Err = SteamIdError;
-    fn from_str(s: &str) -> Result<Self> {
-        Ok(SteamId(s.parse::<u64>()?))
-    }
-}
-
 impl From<u64> for SteamId {
     fn from(id: u64) -> Self {
         Self(id)
+    }
+}
+
+impl FromStr for SteamId {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let id: u64 = s.parse()?;
+        Ok(SteamId(id))
     }
 }
 
@@ -73,10 +74,10 @@ impl SteamId {
     /// assert_eq!(((u64::MAX as f64).log10().floor() as usize) + 1, 20);
     /// ```
     ///
-    /// Credit for the formula goes to [`exploringbinary.com`](https://www.exploringbinary.com/number-of-decimal-digits-in-a-binary-integer/)
+    /// <https://www.exploringbinary.com/number-of-decimal-digits-in-a-binary-integer/>
     pub const MAX_DIGITS_FOR_U64: usize = 20;
 
-    /// [`W = 2 * Z + Y`](https://developer.valvesoftware.com/wiki/SteamID#Steam_ID_as_a_Steam_Community_ID#:~:text=W%3DZ*2%2BY)
+    /// <https://developer.valvesoftware.com/wiki/SteamID#Steam_ID_as_a_Steam_Community_ID#:~:text=W%3DZ*2%2BY>
     pub const fn w(&self) -> u64 {
         2 * self.acc_nr() + self.y()
     }
@@ -93,128 +94,35 @@ impl SteamId {
         (self.0 >> Self::INSTANCE_SHIFT) & Self::INSTANCE_MASK
     }
 
-    pub const fn acc_type(&self) -> Option<AccountType> {
-        match (self.0 >> Self::TYPE_SHIFT) & Self::TYPE_MASK {
-            0 => Some(AccountType::Invalid),
-            1 => Some(AccountType::Individual),
-            2 => Some(AccountType::Multiseat),
-            3 => Some(AccountType::GameServer),
-            4 => Some(AccountType::AnonGameServer),
-            5 => Some(AccountType::Pending),
-            6 => Some(AccountType::ContentServer),
-            7 => Some(AccountType::Clan),
-            8 => Some(AccountType::Chat),
-            9 => Some(AccountType::SuperSeeder),
-            10 => Some(AccountType::AnonUser),
-            _ => None,
-        }
+    pub fn acc_type(&self) -> Option<AccountType> {
+        let acc_type = (self.0 >> Self::TYPE_SHIFT) & Self::TYPE_MASK;
+        AccountType::try_from(acc_type).ok()
     }
 
-    pub const fn universe(&self) -> Option<Universe> {
-        match (self.0 >> Self::UNIVERSE_SHIFT) & Self::UNIVERSE_MASK {
-            0 => Some(Universe::Invalid),
-            1 => Some(Universe::Public),
-            2 => Some(Universe::Beta),
-            3 => Some(Universe::Internal),
-            4 => Some(Universe::Dev),
-            5 => Some(Universe::Rc),
-            _ => None,
-        }
+    pub fn universe(&self) -> Option<Universe> {
+        let universe = (self.0 >> Self::UNIVERSE_SHIFT) & Self::UNIVERSE_MASK;
+        Universe::try_from(universe).ok()
     }
 
     pub const fn as_u64(self) -> u64 {
         self.0
     }
 
-    /// [`As Represented Textually`](https://developer.valvesoftware.com/wiki/SteamID#As_Represented_Textually)
+    /// <https://developer.valvesoftware.com/wiki/SteamID#As_Represented_Textually>
     pub fn to_steam_id(&self) -> Option<String> {
         let x = self.universe()?.as_u64();
-        let y = self.y();
         let z = self.acc_nr();
         let mut buf = String::with_capacity("STEAM_X:X:XXXXXXXXXX".len());
-        write!(buf, "STEAM_{}:{}:{}", x, y, z).unwrap();
+        write!(buf, "STEAM_{}:{}:{}", x, self.y(), z).unwrap();
         Some(buf)
     }
 
-    /// [`Steam ID as a Steam Community ID`](https://developer.valvesoftware.com/wiki/SteamID#Steam_ID_as_a_Steam_Community_ID)
+    /// <https://developer.valvesoftware.com/wiki/SteamID#Steam_ID_as_a_Steam_Community_ID>
     pub fn to_steam_id_3(&self) -> Option<String> {
         let letter = self.acc_type()?.to_letter()?;
-        let w = self.w();
         let mut buf = String::with_capacity("[X:1:XXXXXXXXXX]".len());
-        write!(buf, "[{}:1:{}]", letter, w).unwrap();
+        write!(buf, "[{}:1:{}]", letter, self.w()).unwrap();
         Some(buf)
-    }
-}
-
-/// [`Types of Steam Accounts`](https://developer.valvesoftware.com/wiki/SteamID#Types_of_Steam_Accounts)
-#[derive(PartialEq, Eq, Debug)]
-pub enum AccountType {
-    Invalid,
-    Individual,
-    Multiseat,
-    GameServer,
-    AnonGameServer,
-    Pending,
-    ContentServer,
-    Clan,
-    Chat,
-    SuperSeeder,
-    AnonUser,
-}
-
-impl AccountType {
-    pub const fn to_letter(self) -> Option<char> {
-        match self {
-            AccountType::Invalid => Some('I'),
-            AccountType::Individual => Some('U'),
-            AccountType::Multiseat => Some('M'),
-            AccountType::GameServer => Some('G'),
-            AccountType::AnonGameServer => Some('A'),
-            AccountType::Pending => Some('P'),
-            AccountType::ContentServer => Some('C'),
-            AccountType::Clan => Some('g'),
-            AccountType::Chat | AccountType::SuperSeeder => None,
-            AccountType::AnonUser => Some('a'),
-        }
-    }
-    pub const fn as_u64(self) -> u64 {
-        match self {
-            AccountType::Invalid => 0,
-            AccountType::Individual => 1,
-            AccountType::Multiseat => 2,
-            AccountType::GameServer => 3,
-            AccountType::AnonGameServer => 4,
-            AccountType::Pending => 5,
-            AccountType::ContentServer => 6,
-            AccountType::Clan => 7,
-            AccountType::Chat => 8,
-            AccountType::SuperSeeder => 9,
-            AccountType::AnonUser => 10,
-        }
-    }
-}
-
-/// [`Universes Available for Steam Accounts`](https://developer.valvesoftware.com/wiki/SteamID#Universes_Available_for_Steam_Accounts)
-#[derive(PartialEq, Eq, Debug)]
-pub enum Universe {
-    Invalid,
-    Public,
-    Beta,
-    Internal,
-    Dev,
-    Rc,
-}
-
-impl Universe {
-    pub const fn as_u64(self) -> u64 {
-        match self {
-            Universe::Invalid => 0,
-            Universe::Public => 1,
-            Universe::Beta => 2,
-            Universe::Internal => 3,
-            Universe::Dev => 4,
-            Universe::Rc => 5,
-        }
     }
 }
 

@@ -1,3 +1,4 @@
+/// Load a file from `/test_resources/`
 macro_rules! load_test_json {
     ($filename:literal) => {{
         let mut path = ::std::path::PathBuf::from(::std::env!("CARGO_MANIFEST_DIR"));

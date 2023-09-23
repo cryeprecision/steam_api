@@ -1,22 +1,13 @@
 use byteorder::{ByteOrder, LittleEndian};
 
-use crate::bit_chunks::{BitChunks, ChunksU4, ChunksU5};
-use crate::steam_id::SteamId;
+use crate::model::SteamId;
+use crate::util::bit_chunks::{BitChunks, ChunksU4, ChunksU5};
 
-struct U32Pair(u32, u32);
-
-impl From<U32Pair> for u64 {
-    fn from(U32Pair(low, high): U32Pair) -> Self {
-        (u64::from(high) << 32) | u64::from(low)
-    }
-}
-impl From<u64> for U32Pair {
-    fn from(num: u64) -> Self {
-        U32Pair(num as u32, (num >> 32) as u32)
-    }
+const fn u32x2_to_u64(low: u32, high: u32) -> u64 {
+    ((high as u64) << 32) | (low as u64)
 }
 
-fn to_symbol(index: u8) -> Option<u8> {
+const fn to_symbol(index: u8) -> Option<u8> {
     match index {
         0..=7 => Some(b'A' + index),        // [A, H]
         8..=12 => Some(b'A' + index + 1),   // [J, N]
@@ -26,7 +17,7 @@ fn to_symbol(index: u8) -> Option<u8> {
     }
 }
 
-fn from_symbol(sym: u8) -> Option<u8> {
+const fn from_symbol(sym: u8) -> Option<u8> {
     match sym {
         b'A'..=b'H' => Some(sym - b'A'),      // [0, 7]
         b'J'..=b'N' => Some(sym - b'A' - 1),  // [8, 12]
@@ -36,61 +27,36 @@ fn from_symbol(sym: u8) -> Option<u8> {
     }
 }
 
-fn base32_encode(num: u64) -> Option<[u8; 15]> {
+fn base32_encode_u64(num: u64) -> Option<[u8; 15]> {
     let mut chunks = ChunksU5(num.swap_bytes());
     let mut enc_buf = [0u8; ChunksU5::MAX_CHUNKS + 2];
 
-    {
-        enc_buf[00] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[01] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[02] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[03] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[04] = b'-';
-        enc_buf[05] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[06] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[07] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[08] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[09] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[10] = b'-';
-        enc_buf[11] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[12] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[13] = to_symbol(chunks.next().unwrap_or(0))?;
-        enc_buf[14] = to_symbol(chunks.next().unwrap_or(0))?;
+    for (i, enc) in enc_buf.iter_mut().enumerate() {
+        if i == 4 || i == 10 {
+            *enc = b'-';
+        } else {
+            *enc = to_symbol(chunks.next().unwrap_or(0))?;
+        }
     }
 
     Some(enc_buf)
 }
 
-fn base32_decode(code: &[u8]) -> Option<u64> {
-    if code.len() != ChunksU5::MAX_CHUNKS + 2 {
-        return None;
-    }
-
+fn base32_decode_u64(code: [u8; 15]) -> Option<u64> {
     let mut result = 0u64;
     let mut dec_buf = [0u8; ChunksU5::MAX_CHUNKS];
 
-    {
-        let mut src_iter = code.iter().cloned();
-        dec_buf[00] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[01] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[02] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[03] = src_iter.next().and_then(from_symbol)?;
-        let _ = src_iter.next(); // skip '-'
-        dec_buf[04] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[05] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[06] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[07] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[08] = src_iter.next().and_then(from_symbol)?;
-        let _ = src_iter.next(); // skip '-'
-        dec_buf[09] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[10] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[11] = src_iter.next().and_then(from_symbol)?;
-        dec_buf[12] = src_iter.next().and_then(from_symbol)?;
+    let mut src_iter = code.iter().cloned();
+    for (i, dec) in dec_buf.iter_mut().enumerate() {
+        if i == 4 || i == 10 {
+            let _ = src_iter.next(); // skip '-'
+        }
+        *dec = src_iter.next().and_then(from_symbol)?;
     }
 
-    for i in 0..ChunksU5::MAX_CHUNKS {
+    for (i, dec) in dec_buf.iter().cloned().enumerate() {
         let shift = (ChunksU5::CHUNK_BITS * i as u32) as u64;
-        result |= (dec_buf[i] as u64) << shift;
+        result |= (dec as u64) << shift;
     }
 
     Some(result.to_be())
@@ -108,15 +74,18 @@ impl SteamId {
     }
 
     pub fn to_friend_code(self) -> Option<String> {
-        let hash = self.hash();
-        let mut r = 0u64;
         let mut chunks = ChunksU4(self.0);
-        for i in 0..8 {
-            let a = (r << 4) as u32 | chunks.next().unwrap_or(0) as u32;
-            r = u64::from(U32Pair(a, (r >> 28) as u32));
-            r = u64::from(U32Pair((a << 1) | ((hash >> i) & 1), (r >> 31) as u32));
+
+        let mut hash = self.hash();
+        let mut r = 0u64;
+        for _ in 0..8 {
+            let a = (r << 4) as u32 | (chunks.next().unwrap_or(0) as u32);
+            r = u32x2_to_u64(a, (r >> 28) as u32);
+            r = u32x2_to_u64((a << 1) | (hash & 1), (r >> 31) as u32);
+            hash >>= 1;
         }
-        let bytes = base32_encode(r)?;
+
+        let bytes = base32_encode_u64(r)?;
         std::str::from_utf8(bytes.strip_prefix(b"AAAA-")?)
             .ok()
             .map(|s| s.to_string())
@@ -131,10 +100,10 @@ impl SteamId {
         }
 
         let mut buf = [0u8; ChunksU5::MAX_CHUNKS + 2];
-        (&mut buf[..5]).copy_from_slice(b"AAAA-");
-        (&mut buf[5..]).copy_from_slice(code);
+        buf[..5].copy_from_slice(b"AAAA-");
+        buf[5..].copy_from_slice(code);
 
-        let decoded = base32_decode(&buf)?;
+        let decoded = base32_decode_u64(buf)?;
         let mut chunks = ChunksU5(decoded);
 
         let mut steam_id = 0u64;

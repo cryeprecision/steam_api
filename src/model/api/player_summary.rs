@@ -7,10 +7,9 @@ use thiserror::Error;
 
 use crate::client::Client;
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
-use crate::enums::{CommunityVisibilityState, PersonaState};
-use crate::steam_id::SteamId;
-use crate::steam_id_ext::SteamIdExt;
-use crate::{ProfileState, SteamTime};
+use crate::model::{
+    CommunityVisibilityState, PersonaState, ProfileState, SteamId, SteamIdQueryExt, SteamTime,
+};
 
 #[derive(Error, Debug)]
 pub enum PlayerSummaryError {
@@ -18,31 +17,11 @@ pub enum PlayerSummaryError {
     #[error("too many ids passed for request")]
     TooManyIds,
 
-    /// For efficiency reasons the passed [SteamId] must be unique
-    #[error("ids must be unique")]
-    NonUniqueIds(SteamId),
-
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    /// The response contained an invalid [`CommunityVisibilityState`]
-    #[error("invalid community visibility state: `{0}`")]
-    InvalidCommunityVisibilityState(i64),
-
-    /// The primary-clan-id was not parseable as u64
-    #[error("invalid primary-clan-id: `{0}`")]
-    InvalidPrimaryClanId(String),
-
-    /// The response contained an invalid [`PersonaState`]
-    #[error("invalid persona-state: `{0}`")]
-    InvalidPersonaState(i64),
-
-    /// The response contained an invalid [SteamId]
-    #[error("invalid steam-id: `{0}`")]
-    InvalidSteamId(String),
-
-    #[error("invalid timestamp: `{0}`")]
-    InvalidTimestamp(i64),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 type Result<T> = std::result::Result<T, PlayerSummaryError>;
 
@@ -82,16 +61,6 @@ pub struct PlayerSummary {
     local_country_code: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct ResponseInner {
-    players: Vec<PlayerSummary>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Response {
-    response: ResponseInner,
-}
-
 #[derive(Debug)]
 pub struct PlayerSummaries {
     inner: HashMap<SteamId, PlayerSummary>,
@@ -110,6 +79,16 @@ impl Deref for PlayerSummaries {
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct ResponseInner {
+    players: Vec<PlayerSummary>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Response {
+    response: ResponseInner,
+}
+
 impl From<Response> for PlayerSummaries {
     fn from(value: Response) -> Self {
         let summaries = value.response.players;
@@ -120,26 +99,6 @@ impl From<Response> for PlayerSummaries {
             .collect();
 
         PlayerSummaries { inner: map }
-    }
-}
-
-impl std::fmt::Display for PlayerSummary {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut dbg = f.debug_struct("PlayerSummary");
-        dbg.field("SteamID", &self.steam_id);
-        if let Some(time) = self.time_created {
-            dbg.field("Created", &time.format("%Y/%m/%d %H:%M:%S").to_string());
-        }
-        dbg.field("Name", &self.persona_name);
-        dbg.field("Vis", &self.community_visibility_state);
-        if let Some(country_code) = &self.local_country_code {
-            dbg.field("CC", &country_code);
-        }
-        dbg.field("PersState", &self.persona_state);
-        if let Some(t) = &self.last_logoff {
-            dbg.field("LastLogoff", &t.format("%Y/%m/%d %H:%M:%S").to_string());
-        }
-        dbg.finish()
     }
 }
 
@@ -171,8 +130,7 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::Response;
-    use crate::PlayerSummaries;
+    use super::{PlayerSummaries, Response};
 
     #[test]
     fn parses() {
