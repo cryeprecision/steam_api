@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -9,7 +10,7 @@ use thiserror::Error;
 use crate::client::Client;
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
 use crate::enums::{CommunityVisibilityState, PersonaState};
-use crate::parse_response::{ParseJsonResponse, ParseResponse};
+use crate::parse_response::ParseJsonResponse;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
@@ -28,7 +29,7 @@ pub enum PlayerSummaryError {
 
     /// The response contained an invalid [`CommunityVisibilityState`]
     #[error("invalid community visibility state: `{0}`")]
-    InvalidCommunityVisibilityState(i32),
+    InvalidCommunityVisibilityState(i64),
 
     /// The primary-clan-id was not parseable as u64
     #[error("invalid primary-clan-id: `{0}`")]
@@ -36,7 +37,7 @@ pub enum PlayerSummaryError {
 
     /// The response contained an invalid [`PersonaState`]
     #[error("invalid persona-state: `{0}`")]
-    InvalidPersonaState(i32),
+    InvalidPersonaState(i64),
 
     /// The response contained an invalid [SteamId]
     #[error("invalid steam-id: `{0}`")]
@@ -52,9 +53,9 @@ struct ResponseInnerElement {
     #[serde(rename = "steamid")]
     steam_id: String,
     #[serde(rename = "communityvisibilitystate")]
-    community_visibility_state: i32,
+    community_visibility_state: i64,
     #[serde(rename = "profilestate")]
-    profile_state: Option<i32>,
+    profile_state: Option<i64>,
     #[serde(rename = "personaname")]
     persona_name: String,
     #[serde(rename = "profileurl")]
@@ -69,7 +70,7 @@ struct ResponseInnerElement {
     #[serde(rename = "lastlogoff")]
     last_logoff: Option<i64>,
     #[serde(rename = "personastate")]
-    persona_state: i32,
+    persona_state: i64,
     #[serde(rename = "realname")]
     real_name: Option<String>,
     #[serde(rename = "primaryclanid")]
@@ -77,7 +78,7 @@ struct ResponseInnerElement {
     #[serde(rename = "timecreated")]
     time_created: Option<i64>,
     #[serde(rename = "personastateflags")]
-    persona_state_flags: Option<u32>,
+    persona_state_flags: Option<u64>,
     #[serde(rename = "loccountrycode")]
     local_country_code: Option<String>,
 }
@@ -101,14 +102,13 @@ pub struct PlayerSummaries {
 }
 
 impl PlayerSummaries {
-    pub fn was_requested(&self) -> bool {
-        todo!("convert the map value to option to be able to distinguish");
+    pub fn into_innter(self) -> HashMap<SteamId, PlayerSummary> {
+        self.inner
     }
 }
 
 impl Deref for PlayerSummaries {
     type Target = HashMap<SteamId, PlayerSummary>;
-
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -130,73 +130,8 @@ pub struct PlayerSummary {
     pub real_name: Option<String>,
     pub primary_clan_id: Option<u64>,
     pub time_created: Option<DateTime<Local>>,
-    pub persona_state_flags: Option<u32>,
+    pub persona_state_flags: Option<u64>,
     pub local_country_code: Option<String>,
-}
-
-/// If a given [`SteamId`] does not exist anymore,
-/// its corresponding entry will be `None`
-pub type SummaryMap = HashMap<SteamId, Option<PlayerSummary>>;
-
-impl ParseResponse<ResponseInnerElement> for PlayerSummary {
-    type Error = PlayerSummaryError;
-    fn parse_response(value: ResponseInnerElement) -> Result<Self> {
-        let last_logoff = match value.last_logoff {
-            Some(unix) => Some(
-                Utc.timestamp_opt(unix, 0)
-                    .single()
-                    .ok_or(PlayerSummaryError::InvalidTimestamp(unix))?
-                    .with_timezone(&Local),
-            ),
-            None => None,
-        };
-        let time_created = match value.time_created {
-            Some(unix) => Some(
-                Utc.timestamp_opt(unix, 0)
-                    .single()
-                    .ok_or(PlayerSummaryError::InvalidTimestamp(unix))?
-                    .with_timezone(&Local),
-            ),
-            None => None,
-        };
-
-        let vis_state = CommunityVisibilityState::new(value.community_visibility_state).ok_or(
-            PlayerSummaryError::InvalidCommunityVisibilityState(value.community_visibility_state),
-        )?;
-
-        let persona_state = PersonaState::new(value.persona_state)
-            .ok_or(PlayerSummaryError::InvalidPersonaState(value.persona_state))?;
-
-        let clan_id = match value.primary_clan_id {
-            Some(clan_id) => Some(
-                u64::from_str(&clan_id)
-                    .map_err(|_| PlayerSummaryError::InvalidPrimaryClanId(clan_id))?,
-            ),
-            None => None,
-        };
-
-        let steam_id = SteamId::from_str(&value.steam_id)
-            .map_err(|_| PlayerSummaryError::InvalidSteamId(value.steam_id))?;
-
-        Ok(Self {
-            steam_id,
-            community_visibility_state: vis_state,
-            profile_configured: value.profile_state.is_some(),
-            persona_name: value.persona_name,
-            profile_url: value.profile_url,
-            avatar: value.avatar,
-            avatar_medium: value.avatar_medium,
-            avatar_full: value.avatar_full,
-            avatar_hash: value.avatar_hash,
-            last_logoff,
-            persona_state,
-            real_name: value.real_name,
-            primary_clan_id: clan_id,
-            time_created,
-            persona_state_flags: value.persona_state_flags,
-            local_country_code: value.local_country_code,
-        })
-    }
 }
 
 impl ParseJsonResponse for ResponseInnerElement {
@@ -223,12 +158,15 @@ impl ParseJsonResponse for ResponseInnerElement {
             None => None,
         };
 
-        let vis_state = CommunityVisibilityState::new(self.community_visibility_state).ok_or(
-            PlayerSummaryError::InvalidCommunityVisibilityState(self.community_visibility_state),
-        )?;
+        let vis_state: CommunityVisibilityState =
+            self.community_visibility_state.try_into().map_err(|_| {
+                PlayerSummaryError::InvalidCommunityVisibilityState(self.community_visibility_state)
+            })?;
 
-        let persona_state = PersonaState::new(self.persona_state)
-            .ok_or(PlayerSummaryError::InvalidPersonaState(self.persona_state))?;
+        let persona_state: PersonaState = self
+            .persona_state
+            .try_into()
+            .map_err(|_| (PlayerSummaryError::InvalidPersonaState(self.persona_state)))?;
 
         let clan_id = match self.primary_clan_id {
             Some(clan_id) => Some(
@@ -302,30 +240,24 @@ impl Client {
     /// Get the summaries of the profiles with the given [`SteamId`]
     ///
     /// Uses [`PLAYER_SUMMARIES_API`]
-    pub async fn get_player_summaries(&self, steam_id_chunk: &[SteamId]) -> Result<SummaryMap> {
-        if steam_id_chunk.len() > PLAYER_SUMMARIES_IDS_PER_REQUEST {
+    pub async fn get_player_summaries(
+        &self,
+        steam_id_chunk: Cow<'_, [SteamId]>,
+    ) -> Result<PlayerSummaries> {
+        let mut steam_ids = steam_id_chunk.into_owned();
+        steam_ids.sort_unstable();
+        steam_ids.dedup();
+
+        if steam_ids.len() > PLAYER_SUMMARIES_IDS_PER_REQUEST {
             return Err(PlayerSummaryError::TooManyIds);
         }
 
-        let mut map = SummaryMap::with_capacity(steam_id_chunk.len());
-        for &id in steam_id_chunk {
-            if map.insert(id, None).is_some() {
-                return Err(PlayerSummaryError::NonUniqueIds(id));
-            }
-        }
-
-        let ids = steam_id_chunk.iter().to_steam_id_string(",");
+        let ids = steam_ids.iter().to_steam_id_string(",");
         let query = [("key", self.api_key()), ("steamids", &ids)];
         let resp = self
             .get_json::<Response>(PLAYER_SUMMARIES_API, &query)
             .await?;
-
-        for elem in resp.response.players {
-            let sum = PlayerSummary::parse_response(elem)?;
-            map.insert(sum.steam_id, Some(sum));
-        }
-
-        Ok(map)
+        resp.parse_steam_json()
     }
 }
 

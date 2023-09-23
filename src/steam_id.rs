@@ -2,6 +2,8 @@ use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
 
+use serde::de::Visitor;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Wrapper for [`SteamId`]s that is implemented according to [`Valve`](https://developer.valvesoftware.com/wiki/SteamID)
@@ -20,7 +22,7 @@ use thiserror::Error;
 /// - `X` represents the universe the steam account belongs to.
 /// - `Y` is part of the ID number for the account, it is either `0` or `1`.
 /// - `Z` is the account number.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct SteamId(pub u64);
 
 #[derive(Debug, Error)]
@@ -216,9 +218,123 @@ impl Universe {
     }
 }
 
+struct SteamIdVisitor;
+
+impl<'de> Visitor<'de> for SteamIdVisitor {
+    type Value = SteamId;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a steam id either as a string or unsigned integer")
+    }
+
+    fn visit_u64<E>(self, v: u64) -> std::result::Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(SteamId::from(v))
+    }
+
+    fn visit_borrowed_str<E>(self, v: &'de str) -> std::result::Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let v: u64 = v
+            .parse()
+            .map_err(|_| E::custom(format!("{:?} does not represent a steam id", v)))?;
+        self.visit_u64(v)
+    }
+    fn visit_string<E>(self, v: String) -> std::result::Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.visit_borrowed_str(v.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SteamId {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(SteamIdVisitor)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use serde::{Deserialize, Serialize};
+
     use super::SteamId;
+
+    #[test]
+    fn deserialize_steam_ids_str() {
+        #[derive(Serialize, Deserialize)]
+        struct Test {
+            steam_ids: Vec<SteamId>,
+        }
+
+        let json = serde_json::json!({
+            "steam_ids": ["76561198805665689", "76561197992321696"],
+        })
+        .to_string();
+
+        let parsed: Test = serde_json::from_str(&json).unwrap();
+        let mut steam_ids = parsed.steam_ids.into_iter();
+        assert_eq!(steam_ids.next(), Some(SteamId(76561198805665689)));
+        assert_eq!(steam_ids.next(), Some(SteamId(76561197992321696)));
+        assert_eq!(steam_ids.next(), None);
+    }
+
+    #[test]
+    fn deserialize_steam_ids_int() {
+        #[derive(Serialize, Deserialize)]
+        struct Test {
+            steam_ids: Vec<SteamId>,
+        }
+
+        let json = serde_json::json!({
+            "steam_ids": [76561198805665689u64, 76561197992321696u64],
+        })
+        .to_string();
+
+        let parsed: Test = serde_json::from_str(&json).unwrap();
+        let mut steam_ids = parsed.steam_ids.into_iter();
+        assert_eq!(steam_ids.next(), Some(SteamId(76561198805665689)));
+        assert_eq!(steam_ids.next(), Some(SteamId(76561197992321696)));
+        assert_eq!(steam_ids.next(), None);
+    }
+
+    #[test]
+    fn deserialize_steam_id_int() {
+        #[derive(Serialize, Deserialize)]
+        struct Test {
+            steam_id: SteamId,
+        }
+
+        let json = serde_json::json!({
+            "steam_id": 76561198805665689u64,
+        })
+        .to_string();
+
+        let parsed: Test = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.steam_id, SteamId(76561198805665689));
+    }
+
+    #[test]
+    fn deserialize_steam_id_str() {
+        #[derive(Serialize, Deserialize)]
+        struct Test {
+            steam_id: SteamId,
+        }
+
+        let json = serde_json::json!({
+            "steam_id": "76561198805665689",
+        })
+        .to_string();
+
+        let parsed: Test = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.steam_id, SteamId(76561198805665689));
+    }
 
     #[test]
     fn to_steam_id() {

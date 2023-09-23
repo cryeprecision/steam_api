@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::str::FromStr;
 
 use serde::Deserialize;
@@ -7,7 +9,7 @@ use thiserror::Error;
 use crate::client::Client;
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
 use crate::enums::EconomyBan;
-use crate::parse_response::ParseResponse;
+use crate::parse_response::ParseJsonResponse;
 use crate::steam_id::SteamId;
 use crate::steam_id_ext::SteamIdExt;
 
@@ -28,6 +30,9 @@ pub enum PlayerBanError {
     /// The response contained an invalid [SteamId]
     #[error("invalid steam-id: `{0}`")]
     InvalidSteamId(String),
+
+    #[error("invalid economy ban value: `{0}`")]
+    InvalidEconomyBan(String),
 }
 type Result<T> = std::result::Result<T, PlayerBanError>;
 
@@ -65,25 +70,64 @@ pub struct PlayerBan {
     pub economy_ban: EconomyBan,
 }
 
-/// If a given [`SteamId`] does not exist anymore,
-/// its corresponding entry will be `None`
-pub type BanMap = HashMap<SteamId, Option<PlayerBan>>;
-
-impl ParseResponse<ResponseElement> for PlayerBan {
+impl ParseJsonResponse for ResponseElement {
+    type Output = PlayerBan;
     type Error = PlayerBanError;
-    fn parse_response(value: ResponseElement) -> Result<Self> {
-        let steam_id = SteamId::from_str(&value.steam_id)
-            .map_err(|_| PlayerBanError::InvalidSteamId(value.steam_id))?;
 
-        Ok(Self {
-            steam_id,
-            community_banned: value.community_banned,
-            vac_banned: value.vac_banned,
-            number_of_vac_bans: value.number_of_vac_bans,
-            days_since_last_ban: value.days_since_last_ban,
-            number_of_game_bans: value.number_of_game_bans,
-            economy_ban: EconomyBan::from(value.economy_ban),
-        })
+    fn parse_steam_json(self) -> std::result::Result<Self::Output, Self::Error> {
+        let steam_id = SteamId::from_str(&self.steam_id)
+            .map_err(|_| PlayerBanError::InvalidSteamId(self.steam_id))?;
+
+        todo!("implement serde deserialize from steam id first");
+
+        // let economy_ban: EconomyBan = match self.economy_ban.as_str().try_into() {
+        //     Ok(v) => v,
+        //     Err(_) => return Err(PlayerBanError::InvalidEconomyBan(self.economy_ban)),
+        // };
+
+        // Ok(PlayerBan {
+        //     steam_id,
+        //     community_banned: self.community_banned,
+        //     vac_banned: self.vac_banned,
+        //     number_of_vac_bans: self.number_of_vac_bans,
+        //     days_since_last_ban: self.days_since_last_ban,
+        //     number_of_game_bans: self.number_of_game_bans,
+        //     economy_ban: economy_ban,
+        // })
+    }
+}
+
+impl ParseJsonResponse for Response {
+    type Output = PlayerBans;
+    type Error = PlayerBanError;
+
+    fn parse_steam_json(self) -> std::result::Result<Self::Output, Self::Error> {
+        let mut map = HashMap::with_capacity(PLAYER_BANS_IDS_PER_REQUEST);
+
+        for elem in self.players {
+            let ban = elem.parse_steam_json()?;
+            map.insert(ban.steam_id, ban);
+        }
+
+        Ok(PlayerBans { inner: map })
+    }
+}
+
+#[derive(Debug)]
+pub struct PlayerBans {
+    inner: HashMap<SteamId, PlayerBan>,
+}
+
+impl PlayerBans {
+    pub fn into_inner(self) -> HashMap<SteamId, PlayerBan> {
+        self.inner
+    }
+}
+
+impl Deref for PlayerBans {
+    type Target = HashMap<SteamId, PlayerBan>;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -104,76 +148,32 @@ impl Client {
     /// Get the bans of the profiles with the given [`SteamId`]
     ///
     /// Uses [`PLAYER_BANS_API`]
-    pub async fn get_player_bans(&self, steam_id_chunk: &[SteamId]) -> Result<BanMap> {
-        if steam_id_chunk.len() > PLAYER_BANS_IDS_PER_REQUEST {
+    pub async fn get_player_bans(&self, steam_id_chunk: Cow<'_, [SteamId]>) -> Result<PlayerBans> {
+        let mut steam_ids = steam_id_chunk.into_owned();
+        steam_ids.sort_unstable();
+        steam_ids.dedup();
+
+        if steam_ids.len() > PLAYER_BANS_IDS_PER_REQUEST {
             return Err(PlayerBanError::TooManyIds);
         }
 
-        let mut map = BanMap::with_capacity(steam_id_chunk.len());
-        for &id in steam_id_chunk {
-            if map.insert(id, None).is_some() {
-                return Err(PlayerBanError::NonUniqueIds(id));
-            }
-        }
-
-        let ids = steam_id_chunk.iter().to_steam_id_string(",");
+        let ids = steam_ids.iter().to_steam_id_string(",");
         let query = [("key", self.api_key()), ("steamids", &ids)];
 
         let resp = self.get_json::<Response>(PLAYER_BANS_API, &query).await?;
-
-        for elem in resp.players {
-            let ban = PlayerBan::parse_response(elem)?;
-            map.insert(ban.steam_id, Some(ban));
-        }
-
-        Ok(map)
+        resp.parse_steam_json()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use futures::StreamExt;
+    use super::Response;
+    use crate::parse_response::ParseJsonResponse;
 
-    use crate::steam_id::SteamId;
-    use crate::Client;
-
-    #[tokio::test]
-    async fn it_works() {
-        let ids: [&[SteamId]; _] = [
-            &[76561199123543583.into()],
-            &[76561198196615742.into()],
-            &[76561199159691884.into()],
-            &[76561198230177976.into()],
-            &[76561198414415313.into()],
-            &[76561197992321696.into()],
-            &[76561198350302388.into()],
-            &[76561198159967543.into()],
-            &[76561197981967565.into()],
-            &[76561199049236696.into()],
-            &[76561199063760869.into()],
-            &[76561197961074129.into()],
-            &[76561198292293761.into()],
-            &[76561198145832850.into()],
-            &[76561198151659207.into()],
-            &[76561198405122517.into()],
-        ];
-
-        dotenv::dotenv().unwrap();
-        let api_key = dotenv::var("STEAM_API_KEY").unwrap();
-        let client = Client::options().api_key(api_key).build().await.unwrap();
-
-        let mut stream = futures::stream::iter(ids.iter().cloned())
-            .map(|ids| client.get_player_bans(ids))
-            .buffer_unordered(2);
-
-        while let Some(res) = stream.next().await {
-            for (id, ban) in res.unwrap().iter() {
-                if let Some(ban) = ban {
-                    println!("{}", ban);
-                } else {
-                    println!("{} missing", id);
-                }
-            }
-        }
+    #[test]
+    fn parses() {
+        let json: Response = load_test_json!("player_bans.json");
+        let bans = json.parse_steam_json().unwrap();
+        println!("{:#?}", bans);
     }
 }
