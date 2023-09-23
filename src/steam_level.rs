@@ -29,7 +29,7 @@ struct ResponseInner {
 pub struct SteamLevel(u64);
 
 impl SteamLevel {
-    pub fn lvl(self) -> u64 {
+    pub const fn lvl(self) -> u64 {
         self.0
     }
 }

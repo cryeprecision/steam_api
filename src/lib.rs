@@ -91,13 +91,18 @@ mod test_util;
 pub mod constants;
 
 mod enums;
-
 pub use enums::*;
+
+mod visibility;
+pub use visibility::*;
 
 mod client;
 pub use client::*;
 
 pub mod rate_limit;
+
+mod steam_time;
+pub use steam_time::*;
 
 mod steam_id;
 pub use steam_id::*;

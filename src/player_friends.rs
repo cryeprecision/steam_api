@@ -1,14 +1,13 @@
-use std::str::FromStr;
+use std::collections::HashMap;
 
-use chrono::{DateTime, Local, TimeZone, Utc};
 use reqwest::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::client::Client;
 use crate::constants::PLAYER_FRIENDS_API;
-use crate::parse_response::ParseResponse;
 use crate::steam_id::SteamId;
+use crate::SteamTime;
 
 #[derive(Error, Debug)]
 pub enum PlayerFriendsError {
@@ -24,52 +23,59 @@ pub enum PlayerFriendsError {
 }
 type Result<T> = std::result::Result<T, PlayerFriendsError>;
 
-#[derive(Deserialize, Debug)]
-struct ResponseInnerElement {
-    #[serde(rename = "steamid")]
-    steam_id: String,
-    #[serde(rename = "relationship")]
-    _relationship: String,
-    #[serde(rename = "friend_since")]
-    friends_since: i64,
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Friend {
+    #[serde(rename(deserialize = "steamid"))]
+    steam_id: SteamId,
+    #[serde(rename(deserialize = "relationship"))]
+    relationship: String,
+    #[serde(rename(deserialize = "friend_since"))]
+    friends_since: SteamTime,
 }
 
 #[derive(Deserialize, Debug, Default)]
 struct ResponseInner {
-    friends: Vec<ResponseInnerElement>,
+    friends: Vec<Friend>,
 }
 
 #[derive(Deserialize, Debug)]
 struct Response {
-    #[serde(rename = "friendslist")]
-    friend_list: ResponseInner,
+    #[serde(rename(deserialize = "friendslist"))]
+    friend_list: Option<ResponseInner>,
 }
 
-#[derive(Debug)]
-pub struct Friend {
-    pub steam_id: SteamId,
-    pub friends_since: DateTime<Local>,
+#[derive(Serialize, Debug)]
+pub struct FriendsList {
+    /// - [`None`], if the user has set his friends to **private**
+    /// - [`Some`], if the user has set his friends to **public**
+    ///
+    /// The [`HashMap`] is empty, if the user has **no friends**
+    inner: Option<HashMap<SteamId, Friend>>,
 }
 
-/// List of friends of a Steam-profile
-type FriendList = Vec<Friend>;
+impl From<Response> for FriendsList {
+    fn from(value: Response) -> Self {
+        let friends = match value.friend_list {
+            None => return FriendsList { inner: None },
+            Some(friends) => friends,
+        };
 
-impl ParseResponse<ResponseInnerElement> for Friend {
-    type Error = PlayerFriendsError;
-    fn parse_response(value: ResponseInnerElement) -> Result<Self> {
-        let id = SteamId::from_str(&value.steam_id)
-            .map_err(|_| PlayerFriendsError::InvalidSteamId(value.steam_id))?;
+        let map = friends
+            .friends
+            .into_iter()
+            .map(|friend| (friend.steam_id, friend))
+            .collect();
 
-        let time = DateTime::<Local>::from(
-            Utc.timestamp_opt(value.friends_since, 0)
-                .single()
-                .ok_or(PlayerFriendsError::InvalidTimestamp(value.friends_since))?,
-        );
+        FriendsList { inner: Some(map) }
+    }
+}
 
-        Ok(Self {
-            steam_id: id,
-            friends_since: time,
-        })
+impl FriendsList {
+    pub fn into_inner(self) -> Option<HashMap<SteamId, Friend>> {
+        self.inner
+    }
+    pub const fn as_inner_ref(&self) -> Option<&HashMap<SteamId, Friend>> {
+        self.inner.as_ref()
     }
 }
 
@@ -77,7 +83,7 @@ impl Client {
     /// Get the friends of the profile with the given [`SteamId`]
     ///
     /// Uses [`PLAYER_FRIENDS_API`]
-    pub async fn get_player_friends(&self, id: SteamId) -> Result<Option<FriendList>> {
+    pub async fn get_player_friends(&self, id: SteamId) -> Result<FriendsList> {
         let query = [
             ("key", self.api_key()),
             ("relationship", "friend"),
@@ -87,26 +93,30 @@ impl Client {
         let resp = match self.get_json::<Response>(PLAYER_FRIENDS_API, &query).await {
             Ok(resp) => resp,
             Err(err) => match err.status() {
-                Some(StatusCode::UNAUTHORIZED) => return Ok(None),
+                Some(StatusCode::UNAUTHORIZED) => todo!("get data if response code is non 2XX"),
                 _ => return Err(err.into()),
             },
         };
 
-        let mut friends = Vec::with_capacity(resp.friend_list.friends.len());
-        for friend in resp.friend_list.friends {
-            friends.push(Friend::parse_response(friend)?);
-        }
-
-        Ok(Some(friends))
+        Ok(resp.into())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{FriendsList, Response};
 
     #[test]
-    fn parses_public() {}
+    fn parses_private() {
+        let resp: Response = load_test_json!("player_friends_private.json");
+        let bans: FriendsList = resp.into();
+        println!("{:#?}", bans);
+    }
 
     #[test]
-    fn parses_private() {}
+    fn parses_public() {
+        let resp: Response = load_test_json!("player_friends_public.json");
+        let bans: FriendsList = resp.into();
+        println!("{:#?}", bans);
+    }
 }

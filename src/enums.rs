@@ -1,10 +1,11 @@
-use serde::de::Visitor;
+use serde::de::{self, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
 
 pub enum EnumError<T> {
     Unknown(T),
 }
 
+/// <https://developer.valvesoftware.com/wiki/Steam_Web_API#Public_Data>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum PersonaState {
     Offline = 0,
@@ -47,23 +48,15 @@ impl<'de> Visitor<'de> for PersonaStateVisitor {
     where
         E: serde::de::Error,
     {
-        PersonaState::try_from(v).map_err(|_| {
-            E::custom(format!(
-                "the number {} does not correspond to an enum variant",
-                v
-            ))
-        })
+        PersonaState::try_from(v)
+            .map_err(|_| de::Error::invalid_value(Unexpected::Signed(v), &self))
     }
     fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        let signed = i64::try_from(v).map_err(|_| {
-            E::custom(format!(
-                "the number {} does not correspond to an enum variant",
-                v,
-            ))
-        })?;
+        let signed = i64::try_from(v)
+            .map_err(|_| de::Error::invalid_value(Unexpected::Unsigned(v), &self))?;
         self.visit_i64(signed)
     }
 }
@@ -77,6 +70,7 @@ impl<'de> Deserialize<'de> for PersonaState {
     }
 }
 
+/// <https://developer.valvesoftware.com/wiki/Steam_Web_API#Public_Data>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum CommunityVisibilityState {
     Private = 1,
@@ -109,23 +103,15 @@ impl<'de> Visitor<'de> for CommunityVisibilityStateVisitor {
     where
         E: serde::de::Error,
     {
-        CommunityVisibilityState::try_from(v).map_err(|_| {
-            E::custom(format!(
-                "{} does not correspond to a community visibility state",
-                v
-            ))
-        })
+        CommunityVisibilityState::try_from(v)
+            .map_err(|_| de::Error::invalid_value(Unexpected::Signed(v), &self))
     }
     fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        let signed = i64::try_from(v).map_err(|_| {
-            E::custom(format!(
-                "{} does not correspond to a community visibility state",
-                v,
-            ))
-        })?;
+        let signed = i64::try_from(v)
+            .map_err(|_| de::Error::invalid_value(Unexpected::Unsigned(v), &self))?;
         self.visit_i64(signed)
     }
 }
@@ -139,6 +125,7 @@ impl<'de> Deserialize<'de> for CommunityVisibilityState {
     }
 }
 
+/// Undocumented 👻
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum EconomyBan {
     None,
@@ -146,13 +133,13 @@ pub enum EconomyBan {
     Banned,
 }
 
-impl<'a> TryFrom<&'a [u8]> for EconomyBan {
-    type Error = EnumError<&'a [u8]>;
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+impl<'a> TryFrom<&'a str> for EconomyBan {
+    type Error = EnumError<&'a str>;
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
         match value {
-            b"none" => Ok(EconomyBan::None),
-            b"probation" => Ok(EconomyBan::Probation),
-            b"banned" => Ok(EconomyBan::Banned),
+            "none" => Ok(EconomyBan::None),
+            "probation" => Ok(EconomyBan::Probation),
+            "banned" => Ok(EconomyBan::Banned),
             _ => Err(EnumError::Unknown(value)),
         }
     }
@@ -167,31 +154,11 @@ impl<'de> Visitor<'de> for EconomyBanVisitor {
         formatter.write_str("persona state enum variant as a string or byte sequence")
     }
 
-    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        EconomyBan::try_from(v)
-            .map_err(|_| E::custom(format!("{:?} does not correspond to an economy ban", v)))
-    }
-    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        self.visit_bytes(v.as_slice())
-    }
-
-    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        self.visit_borrowed_bytes(v.as_bytes())
-    }
-    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        self.visit_borrowed_str(v.as_str())
+        EconomyBan::try_from(v).map_err(|_| de::Error::invalid_value(Unexpected::Str(v), &self))
     }
 }
 
@@ -200,7 +167,63 @@ impl<'de> Deserialize<'de> for EconomyBan {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_bytes(EconomyBanVisitor)
+        deserializer.deserialize_str(EconomyBanVisitor)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub enum ProfileState {
+    Configured,
+    NotConfigured,
+}
+
+struct ProfileStateVisitor;
+
+impl<'de> Visitor<'de> for ProfileStateVisitor {
+    type Value = ProfileState;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("profile state enum as either nothing or the number 1")
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(ProfileState::NotConfigured)
+    }
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_i64(ProfileStateVisitor)
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        match v {
+            1 => Ok(ProfileState::Configured),
+            _ => Err(de::Error::invalid_value(Unexpected::Signed(v), &self)),
+        }
+    }
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        let signed = i64::try_from(v)
+            .map_err(|_| de::Error::invalid_value(Unexpected::Unsigned(v), &self))?;
+        self.visit_i64(signed)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProfileState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_option(ProfileStateVisitor)
     }
 }
 
@@ -208,7 +231,7 @@ impl<'de> Deserialize<'de> for EconomyBan {
 mod test {
     use serde::{Deserialize, Serialize};
 
-    use crate::{CommunityVisibilityState, EconomyBan, PersonaState};
+    use crate::{CommunityVisibilityState, EconomyBan, PersonaState, ProfileState};
 
     #[test]
     fn deserialize_economy_ban() {
@@ -270,5 +293,36 @@ mod test {
         assert_eq!(states.next(), Some(PersonaState::LookingToTrade));
         assert_eq!(states.next(), Some(PersonaState::LookingToPlay));
         assert_eq!(states.next(), Some(PersonaState::Invisible));
+    }
+
+    #[test]
+    fn deserialize_profile_state_some() {
+        #[derive(Deserialize, Serialize)]
+        struct Test {
+            profile_state: ProfileState,
+        }
+
+        let json = serde_json::json!({
+            "profile_state": 1,
+        })
+        .to_string();
+
+        let parsed: Test = serde_json::from_str(&json).unwrap();
+        let state = parsed.profile_state;
+        assert_eq!(state, ProfileState::Configured);
+    }
+
+    #[test]
+    fn deserialize_profile_state_none() {
+        #[derive(Deserialize, Serialize)]
+        struct Test {
+            profile_state: ProfileState,
+        }
+
+        let json = serde_json::json!({}).to_string();
+
+        let parsed: Test = serde_json::from_str(&json).unwrap();
+        let state = parsed.profile_state;
+        assert_eq!(state, ProfileState::NotConfigured);
     }
 }

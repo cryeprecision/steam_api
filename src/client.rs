@@ -103,6 +103,13 @@ impl ClientOptions {
         Ok(client)
     }
     async fn get_session_id(client: &reqwest::Client) -> Result<String> {
+        fn find_cookie(v: &HeaderValue) -> Option<&str> {
+            let str = v.to_str().ok()?;
+            str.strip_prefix(SESSION_ID_PREFIX)?
+                .split_once(';')
+                .map(|(id, _)| id)
+        }
+
         // Header value looks like this
         // sessionid=a0a0a0a0a0a0a0a0a0a0a0a0; Path=/; Secure; SameSite=None
         const SESSION_ID_PREFIX: &str = "sessionid=";
@@ -117,13 +124,6 @@ impl ClientOptions {
         // We expect this status code to be returned
         if resp.status() != StatusCode::UNAUTHORIZED {
             resp.error_for_status_ref().map_err(|_| Error::UrlParse)?;
-        }
-
-        fn find_cookie(v: &HeaderValue) -> Option<&str> {
-            let str = v.to_str().ok()?;
-            str.strip_prefix(SESSION_ID_PREFIX)?
-                .split_once(';')
-                .map(|(id, _)| id)
         }
 
         let set_cookies = resp.headers().get_all(SET_COOKIE);

@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
 
-use serde::de::Visitor;
+use serde::de::{self, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -234,13 +234,13 @@ impl<'de> Visitor<'de> for SteamIdVisitor {
         Ok(SteamId::from(v))
     }
 
-    fn visit_borrowed_str<E>(self, v: &'de str) -> std::result::Result<Self::Value, E>
+    fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
         let v: u64 = v
             .parse()
-            .map_err(|_| E::custom(format!("{:?} does not represent a steam id", v)))?;
+            .map_err(|_| de::Error::invalid_value(Unexpected::Str(v), &self))?;
         self.visit_u64(v)
     }
     fn visit_string<E>(self, v: String) -> std::result::Result<Self::Value, E>
