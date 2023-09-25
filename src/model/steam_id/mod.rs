@@ -164,7 +164,7 @@ impl<'de> Deserialize<'de> for SteamId {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_u64(SteamIdVisitor)
+        deserializer.deserialize_any(SteamIdVisitor)
     }
 }
 
