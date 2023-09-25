@@ -29,7 +29,12 @@ use crate::model::{AccountType, Universe};
 /// - `X` represents the universe the steam account belongs to.
 /// - `Y` is part of the ID number for the account, it is either `0` or `1`.
 /// - `Z` is the account number.
+///
+/// # Serialize
+///
+/// Serializes to a string because JavaScript can't handle the whole [`u64`] range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(into = "String")]
 pub struct SteamId(pub u64);
 
 impl fmt::Display for SteamId {
@@ -41,6 +46,12 @@ impl fmt::Display for SteamId {
 impl From<u64> for SteamId {
     fn from(id: u64) -> Self {
         Self(id)
+    }
+}
+
+impl From<SteamId> for String {
+    fn from(value: SteamId) -> Self {
+        value.to_string()
     }
 }
 
@@ -226,6 +237,12 @@ mod tests {
 
         let parsed: Test = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.steam_id, SteamId(76561198805665689));
+    }
+
+    #[test]
+    fn serialize_to_string() {
+        let serialized: String = serde_json::to_string(&SteamId(76561198805665689)).unwrap();
+        assert_eq!(serialized, r#""76561198805665689""#);
     }
 
     #[test]
