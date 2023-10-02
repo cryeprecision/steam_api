@@ -22,12 +22,12 @@ pub struct Client {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("builder configuration is invalid")]
+    #[error("builder configuration is invalid: {0}")]
     ClientConfig(reqwest::Error),
-    #[error("couldn't parse url")]
-    UrlParse,
-    #[error("couldn't make request to get session id")]
-    Request,
+    #[error("unexpected status code: {0}")]
+    Status(reqwest::Error),
+    #[error("couldn't make request to get session id: {0}")]
+    Request(reqwest::Error),
     #[error("response is missing set-cookie header for session id")]
     SetCookieMissing,
     #[error("set-cookie header for session-id is not valid utf-8")]
@@ -119,11 +119,11 @@ impl ClientOptions {
             .get(USER_SEARCH_API)
             .send()
             .await
-            .map_err(|_| Error::Request)?;
+            .map_err(Error::Request)?;
 
         // We expect this status code to be returned
         if resp.status() != StatusCode::UNAUTHORIZED {
-            resp.error_for_status_ref().map_err(|_| Error::UrlParse)?;
+            resp.error_for_status_ref().map_err(Error::Status)?;
         }
 
         let set_cookies = resp.headers().get_all(SET_COOKIE);
