@@ -28,7 +28,7 @@ pub struct Friend {
     friends_since: SteamTime,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Debug, Clone)]
 pub struct FriendsList {
     /// - [`None`], if the user has set his friends to **private**
     /// - [`Some`], if the user has set his friends to **public**

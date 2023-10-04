@@ -5,6 +5,7 @@ use serde::de::{self, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(transparent)]
 pub struct SteamTime {
     inner: DateTime<Local>,
 }
