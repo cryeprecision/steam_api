@@ -175,7 +175,16 @@ impl<'de> Deserialize<'de> for SteamId {
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_any(SteamIdVisitor)
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Intermediate<'a> {
+            Int(u64),
+            Str(&'a str),
+        }
+        match Intermediate::deserialize(deserializer)? {
+            Intermediate::Int(id) => Ok(SteamId(id)),
+            Intermediate::Str(id) => Ok(id.parse().map_err(serde::de::Error::custom)?),
+        }
     }
 }
 
