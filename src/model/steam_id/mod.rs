@@ -48,6 +48,11 @@ impl From<u64> for SteamId {
         Self(id)
     }
 }
+impl From<i64> for SteamId {
+    fn from(id: i64) -> Self {
+        Self(id.max(0) as u64)
+    }
+}
 
 impl From<SteamId> for String {
     fn from(value: SteamId) -> Self {
