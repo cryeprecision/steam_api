@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::client::Client;
 use crate::constants::{PLAYER_BANS_API, PLAYER_BANS_IDS_PER_REQUEST};
-use crate::model::{EconomyBan, SteamId, SteamIdQueryExt};
+use crate::model::{EconomyBan, SteamId, SteamIdQueryExt, SteamIdStr};
 
 #[derive(Debug, Error)]
 pub enum PlayerBanError {
@@ -25,7 +25,7 @@ type Result<T> = std::result::Result<T, PlayerBanError>;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PlayerBan {
     #[serde(rename(deserialize = "SteamId"))]
-    pub steam_id: SteamId,
+    pub steam_id: SteamIdStr,
     #[serde(rename(deserialize = "CommunityBanned"))]
     pub community_banned: bool,
     #[serde(rename(deserialize = "VACBanned"))]
@@ -66,7 +66,10 @@ struct Response {
 impl From<Response> for PlayerBans {
     fn from(value: Response) -> Self {
         let bans = value.players;
-        let map = bans.into_iter().map(|ban| (ban.steam_id, ban)).collect();
+        let map = bans
+            .into_iter()
+            .map(|ban| (ban.steam_id.into(), ban))
+            .collect();
         PlayerBans { inner: map }
     }
 }

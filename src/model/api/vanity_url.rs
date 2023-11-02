@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::client::Client;
 use crate::constants::VANITY_API;
-use crate::model::SteamId;
+use crate::model::SteamIdStr;
 
 #[derive(Error, Debug)]
 pub enum VanityUrlError {
@@ -18,7 +18,7 @@ type Result<T> = std::result::Result<T, VanityUrlError>;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VanityUrl {
     #[serde(rename = "steamid")]
-    steam_id: Option<SteamId>,
+    steam_id: Option<SteamIdStr>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -45,12 +45,12 @@ impl Client {
 mod tests {
     use super::Response;
     use crate::model::api::vanity_url::VanityUrl;
-    use crate::model::SteamId;
+    use crate::model::SteamIdStr;
 
     #[test]
     fn parses() {
         let json: Response = load_test_json!("vanity_url.json");
         let url: VanityUrl = json.into();
-        assert_eq!(url.steam_id, Some(SteamId(76561197960287930)))
+        assert_eq!(url.steam_id, Some(SteamIdStr(76561197960287930)))
     }
 }

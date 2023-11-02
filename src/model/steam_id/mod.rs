@@ -1,5 +1,6 @@
 mod query_ext;
 pub use query_ext::SteamIdQueryExt;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "friend_code")]
 mod friend_code;
@@ -7,9 +8,6 @@ mod friend_code;
 use std::fmt;
 use std::fmt::Write;
 use std::str::FromStr;
-
-use serde::de::{self, Unexpected, Visitor};
-use serde::{Deserialize, Serialize};
 
 use crate::model::{AccountType, Universe};
 
@@ -29,13 +27,29 @@ use crate::model::{AccountType, Universe};
 /// - `X` represents the universe the steam account belongs to.
 /// - `Y` is part of the ID number for the account, it is either `0` or `1`.
 /// - `Z` is the account number.
-///
-/// # Serialize
-///
-/// Serializes to a string because JavaScript can't handle the whole [`u64`] range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[serde(into = "String")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SteamId(pub u64);
+
+/// Essentially the same as [`SteamId`] but serializes to a string and deserializes from a string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SteamIdStr(pub u64);
+
+impl From<SteamIdStr> for SteamId {
+    fn from(value: SteamIdStr) -> Self {
+        SteamId(value.0)
+    }
+}
+impl From<SteamId> for SteamIdStr {
+    fn from(value: SteamId) -> Self {
+        SteamIdStr(value.0)
+    }
+}
+
+impl SteamIdStr {
+    pub fn steam_id(self) -> SteamId {
+        self.into()
+    }
+}
 
 impl fmt::Display for SteamId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -63,8 +77,45 @@ impl From<SteamId> for String {
 impl FromStr for SteamId {
     type Err = std::num::ParseIntError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let id: u64 = s.parse()?;
-        Ok(SteamId(id))
+        Ok(SteamId(s.parse()?))
+    }
+}
+
+pub mod ser {
+
+    use serde::{Serialize, Serializer};
+
+    use super::SteamIdStr;
+
+    impl Serialize for SteamIdStr {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            serializer.serialize_str(&self.steam_id().to_string())
+        }
+    }
+}
+
+pub mod de {
+    use std::borrow::Cow;
+    use std::str::FromStr;
+
+    use serde::{Deserialize, Deserializer};
+
+    use super::SteamIdStr;
+    use crate::SteamId;
+
+    impl<'de> Deserialize<'de> for SteamIdStr {
+        fn deserialize<D>(deserializer: D) -> Result<SteamIdStr, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let str = <Cow<'de, str>>::deserialize(deserializer)?;
+            SteamId::from_str(&str)
+                .map_err(serde::de::Error::custom)
+                .map(SteamIdStr::from)
+        }
     }
 }
 
@@ -142,68 +193,18 @@ impl SteamId {
     }
 }
 
-struct SteamIdVisitor;
-
-impl<'de> Visitor<'de> for SteamIdVisitor {
-    type Value = SteamId;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a steam id either as a string or unsigned integer")
-    }
-
-    fn visit_u64<E>(self, v: u64) -> std::result::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(SteamId::from(v))
-    }
-
-    fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        let v: u64 = v
-            .parse()
-            .map_err(|_| de::Error::invalid_value(Unexpected::Str(v), &self))?;
-        self.visit_u64(v)
-    }
-    fn visit_string<E>(self, v: String) -> std::result::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        self.visit_borrowed_str(v.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for SteamId {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Intermediate<'a> {
-            Int(u64),
-            Str(&'a str),
-        }
-        match Intermediate::deserialize(deserializer)? {
-            Intermediate::Int(id) => Ok(SteamId(id)),
-            Intermediate::Str(id) => Ok(id.parse().map_err(serde::de::Error::custom)?),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
 
     use super::SteamId;
+    use crate::steam_id::SteamIdStr;
 
     #[test]
     fn deserialize_steam_ids_str() {
         #[derive(Serialize, Deserialize)]
         struct Test {
-            steam_ids: Vec<SteamId>,
+            steam_ids: Vec<SteamIdStr>,
         }
 
         let json = serde_json::json!({
@@ -213,8 +214,8 @@ mod tests {
 
         let parsed: Test = serde_json::from_str(&json).unwrap();
         let mut steam_ids = parsed.steam_ids.into_iter();
-        assert_eq!(steam_ids.next(), Some(SteamId(76561198805665689)));
-        assert_eq!(steam_ids.next(), Some(SteamId(76561197992321696)));
+        assert_eq!(steam_ids.next(), Some(SteamIdStr(76561198805665689)));
+        assert_eq!(steam_ids.next(), Some(SteamIdStr(76561197992321696)));
         assert_eq!(steam_ids.next(), None);
     }
 
@@ -255,7 +256,8 @@ mod tests {
 
     #[test]
     fn serialize_to_string() {
-        let serialized: String = serde_json::to_string(&SteamId(76561198805665689)).unwrap();
+        let serialized: String =
+            serde_json::to_string(&SteamId(76561198805665689).to_string()).unwrap();
         assert_eq!(serialized, r#""76561198805665689""#);
     }
 
@@ -263,7 +265,7 @@ mod tests {
     fn deserialize_steam_id_str() {
         #[derive(Serialize, Deserialize)]
         struct Test {
-            steam_id: SteamId,
+            steam_id: SteamIdStr,
         }
 
         let json = serde_json::json!({
@@ -272,7 +274,7 @@ mod tests {
         .to_string();
 
         let parsed: Test = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.steam_id, SteamId(76561198805665689));
+        assert_eq!(parsed.steam_id, SteamIdStr(76561198805665689));
     }
 
     #[test]

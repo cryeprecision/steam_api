@@ -8,8 +8,9 @@ use thiserror::Error;
 use crate::client::Client;
 use crate::constants::{PLAYER_SUMMARIES_API, PLAYER_SUMMARIES_IDS_PER_REQUEST};
 use crate::model::{
-    CommunityVisibilityState, PersonaState, ProfileState, SteamId, SteamIdQueryExt, SteamTime,
+    CommunityVisibilityState, PersonaState, ProfileState, SteamIdQueryExt, SteamIdStr, SteamTime,
 };
+use crate::SteamId;
 
 #[derive(Error, Debug)]
 pub enum PlayerSummaryError {
@@ -28,7 +29,7 @@ type Result<T> = std::result::Result<T, PlayerSummaryError>;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PlayerSummary {
     #[serde(rename(deserialize = "steamid"))]
-    steam_id: SteamId,
+    steam_id: SteamIdStr,
     #[serde(rename(deserialize = "communityvisibilitystate"))]
     community_visibility_state: CommunityVisibilityState,
     #[serde(rename(deserialize = "profilestate"))]
@@ -63,17 +64,17 @@ pub struct PlayerSummary {
 
 #[derive(Debug)]
 pub struct PlayerSummaries {
-    inner: HashMap<SteamId, PlayerSummary>,
+    inner: HashMap<SteamIdStr, PlayerSummary>,
 }
 
 impl PlayerSummaries {
-    pub fn into_inner(self) -> HashMap<SteamId, PlayerSummary> {
+    pub fn into_inner(self) -> HashMap<SteamIdStr, PlayerSummary> {
         self.inner
     }
 }
 
 impl Deref for PlayerSummaries {
-    type Target = HashMap<SteamId, PlayerSummary>;
+    type Target = HashMap<SteamIdStr, PlayerSummary>;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }

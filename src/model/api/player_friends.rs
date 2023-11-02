@@ -7,6 +7,7 @@ use thiserror::Error;
 use crate::client::Client;
 use crate::constants::PLAYER_FRIENDS_API;
 use crate::model::{SteamId, SteamTime};
+use crate::SteamIdStr;
 
 #[derive(Error, Debug)]
 pub enum PlayerFriendsError {
@@ -21,7 +22,7 @@ type Result<T> = std::result::Result<T, PlayerFriendsError>;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Friend {
     #[serde(rename(deserialize = "steamid"))]
-    steam_id: SteamId,
+    steam_id: SteamIdStr,
     #[serde(rename(deserialize = "relationship"))]
     relationship: String,
     #[serde(rename(deserialize = "friend_since"))]
@@ -58,7 +59,7 @@ impl From<Response> for FriendsList {
         let map = friends
             .friends
             .into_iter()
-            .map(|friend| (friend.steam_id, friend))
+            .map(|friend| (friend.steam_id.into(), friend))
             .collect();
 
         FriendsList { inner: Some(map) }
