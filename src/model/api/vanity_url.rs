@@ -18,7 +18,7 @@ type Result<T> = std::result::Result<T, VanityUrlError>;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VanityUrl {
     #[serde(rename = "steamid")]
-    steam_id: Option<SteamIdStr>,
+    pub steam_id: Option<SteamIdStr>,
 }
 
 #[derive(Deserialize, Debug)]
