@@ -22,11 +22,11 @@ type Result<T> = std::result::Result<T, PlayerFriendsError>;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Friend {
     #[serde(rename(deserialize = "steamid"))]
-    steam_id: SteamIdStr,
+    pub steam_id: SteamIdStr,
     #[serde(rename(deserialize = "relationship"))]
-    relationship: String,
+    pub relationship: String,
     #[serde(rename(deserialize = "friend_since"))]
-    friends_since: SteamTime,
+    pub friends_since: SteamTime,
 }
 
 #[derive(Debug, Clone)]
@@ -89,7 +89,7 @@ impl Client {
         let resp = match self.get_json::<Response>(PLAYER_FRIENDS_API, &query).await {
             Ok(resp) => resp,
             Err(err) => match err.status() {
-                Some(StatusCode::UNAUTHORIZED) => todo!("get data if response code is non 2XX"),
+                Some(StatusCode::UNAUTHORIZED) => return Ok(FriendsList { inner: None }),
                 _ => return Err(err.into()),
             },
         };

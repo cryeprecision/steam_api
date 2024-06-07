@@ -64,17 +64,17 @@ pub struct PlayerSummary {
 
 #[derive(Debug)]
 pub struct PlayerSummaries {
-    inner: HashMap<SteamIdStr, PlayerSummary>,
+    inner: HashMap<SteamId, PlayerSummary>,
 }
 
 impl PlayerSummaries {
-    pub fn into_inner(self) -> HashMap<SteamIdStr, PlayerSummary> {
+    pub fn into_inner(self) -> HashMap<SteamId, PlayerSummary> {
         self.inner
     }
 }
 
 impl Deref for PlayerSummaries {
-    type Target = HashMap<SteamIdStr, PlayerSummary>;
+    type Target = HashMap<SteamId, PlayerSummary>;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -96,7 +96,7 @@ impl From<Response> for PlayerSummaries {
 
         let map = summaries
             .into_iter()
-            .map(|summary| (summary.steam_id, summary))
+            .map(|summary| (summary.steam_id.into(), summary))
             .collect();
 
         PlayerSummaries { inner: map }
