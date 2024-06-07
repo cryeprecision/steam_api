@@ -17,7 +17,7 @@ pub struct Client {
     session_id: String,
     api_keys: Vec<String>,
     client: reqwest::Client,
-    retries: AtomicUsize,
+    total_retries: AtomicUsize,
 }
 
 #[derive(Debug, Error)]
@@ -39,20 +39,20 @@ pub enum Error {
 }
 type Result<T> = std::result::Result<T, Error>;
 
-pub struct ClientOptions {
+pub struct ClientBuilder {
     retry_timeout: Option<Duration>,
     max_retries: Option<usize>,
     api_keys: Vec<String>,
     dont_retry: Vec<StatusCode>,
 }
 
-impl Default for ClientOptions {
+impl Default for ClientBuilder {
     fn default() -> Self {
-        ClientOptions::new()
+        ClientBuilder::new()
     }
 }
 
-impl ClientOptions {
+impl ClientBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -97,7 +97,7 @@ impl ClientOptions {
         self
     }
 
-    fn client_with_cookie_store() -> Result<reqwest::Client> {
+    fn reqwest_client_with_cookies() -> Result<reqwest::Client> {
         let builder = reqwest::Client::builder().cookie_provider(Arc::new(Jar::default()));
         let client = builder.build().map_err(Error::ClientConfig)?;
         Ok(client)
@@ -133,29 +133,18 @@ impl ClientOptions {
             .next()
             .ok_or(Error::SetCookieMissing)?;
 
-        // let session_id = cookie.split
-
         Ok(session_id.to_string())
     }
 
-    /// # Panics
-    /// - If no api-key has been set
-    /// - If session_id but no cookie_store
     pub async fn build(&self) -> Result<Client> {
         if self.api_keys.is_empty() {
             return Err(Error::ApiKey);
         }
 
-        let client = Self::client_with_cookie_store()?;
+        let client = Self::reqwest_client_with_cookies()?;
         let session_id = Self::get_session_id(&client).await?;
 
         let mut dont_retry = self.dont_retry.clone();
-
-        // TODO: Is it really a good idea to add this here? (NOIDONTTHINKSO)
-        // if !dont_retry.contains(&StatusCode::UNAUTHORIZED) {
-        //     dont_retry.push(StatusCode::UNAUTHORIZED);
-        // }
-
         dont_retry.sort_unstable();
         dont_retry.dedup();
 
@@ -166,7 +155,7 @@ impl ClientOptions {
             session_id,
             api_keys: self.api_keys.clone(),
             client,
-            retries: AtomicUsize::new(0),
+            total_retries: AtomicUsize::new(0),
         })
     }
 }
@@ -197,7 +186,7 @@ impl Client {
             tokio::time::sleep(self.retry_timeout).await;
         };
         if retries > 0 {
-            self.retries.fetch_add(retries, Ordering::SeqCst);
+            self.total_retries.fetch_add(retries, Ordering::SeqCst);
         }
         result
     }
@@ -207,34 +196,18 @@ impl Client {
     pub fn session_id(&self) -> &str {
         self.session_id.as_str()
     }
-    pub fn retries(&self) -> usize {
-        self.retries.load(Ordering::SeqCst)
+    pub fn total_retries(&self) -> usize {
+        self.total_retries.load(Ordering::SeqCst)
     }
-    pub fn reset_retries(&self) {
-        self.retries.store(0, Ordering::SeqCst);
+    pub fn reset_total_retries(&self) {
+        self.total_retries.store(0, Ordering::SeqCst);
     }
     /// Clone the inner [`reqwest::Client`], which is just a call to `Arc::clone`
     /// to share the connection pool with other program parts that need one.
     pub fn clone_client(&self) -> reqwest::Client {
         self.client.clone()
     }
-    pub fn options() -> ClientOptions {
-        ClientOptions::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Client;
-
-    #[tokio::test]
-    async fn get_session_id() {
-        let client = Client::options()
-            .api_key("invalid".to_string())
-            .build()
-            .await
-            .unwrap();
-
-        println!("{}", client.session_id());
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder::new()
     }
 }
