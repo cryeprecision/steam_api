@@ -14,15 +14,15 @@ friend_code = ["dep:md5", "dep:byteorder"]
 user_search = ["dep:scraper"]
 
 [dependencies]
-reqwest = { version = "0", features = ["json", "cookies"] } # make web-requests
-serde = { version = "1", features = ["derive"] }            # seralization
-serde_json = { version = "1" }                              # de-/serialize json data
-tokio = { version = "1", features = ["full"] }              # async runtime
-futures = { version = "0" }                                 # concurrency helper
-chrono = { version = "0", features = ["serde"] }            # time and date stuff
-dotenv = { version = "0" }                                  # use .env file for config
-md5 = { version = "0", optional = true }                    # used for friend_code feature
-byteorder = { version = "1", optional = true }              # used for friend_code feature
-thiserror = { version = "1" }                               # define custom errors
-scraper = { version = "0", optional = true }                # parse html
-indicatif = { version = "0" }                               # progress bars
+reqwest = { version = "0", default-features = false, features = ["rustls-tls", "json", "cookies"] } # make web-requests
+serde = { version = "1", features = ["derive"] }                                                    # seralization
+serde_json = { version = "1" }                                                                      # de-/serialize json data
+tokio = { version = "1", features = ["full"] }                                                      # async runtime
+futures = { version = "0" }                                                                         # concurrency helper
+chrono = { version = "0", features = ["serde"] }                                                    # time and date stuff
+dotenv = { version = "0" }                                                                          # use .env file for config
+md5 = { version = "0", optional = true }                                                            # used for friend_code feature
+byteorder = { version = "1", optional = true }                                                      # used for friend_code feature
+thiserror = { version = "1" }                                                                       # define custom errors
+scraper = { version = "0", optional = true }                                                        # parse html
+indicatif = { version = "0" }                                                                       # progress bars
